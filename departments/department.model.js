@@ -1,10 +1,9 @@
-// departments/department.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
   const attributes = {
     id: {
-      type: DataTypes.INTEGER,
+      type: DataTypes.INTEGER.UNSIGNED,
       primaryKey: true,
       autoIncrement: true
     },
@@ -31,7 +30,6 @@ module.exports = (sequelize) => {
   Department.associate = (models) => {
     Department.hasMany(models.Employee, {
       foreignKey: 'departmentId',
-      sourceKey: 'id',
       as: 'Employees'
     });
   };

@@ -1,4 +1,3 @@
-// accounts/account.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = model;
@@ -6,7 +5,7 @@ module.exports = model;
 function model(sequelize) {
     const attributes = {
         id: {
-            type: DataTypes.INTEGER.UNSIGNED,
+            type: DataTypes.INTEGER.UNSIGNED, // ✅ matches employees FK
             primaryKey: true,
             autoIncrement: true
         },
@@ -47,17 +46,23 @@ function model(sequelize) {
 
     const options = {
         tableName: 'accounts',
-        // disable default timestamp fields (createdAt and updatedAt)
         timestamps: false,
         defaultScope: {
-            // exclude password hash by default
             attributes: { exclude: ['passwordHash'] }
         },
         scopes: {
-            // include hash with this scope
             withHash: { attributes: {} }
         }
     };
 
-    return sequelize.define('Account', attributes, options);
+    const Account = sequelize.define('Account', attributes, options);
+
+    Account.associate = (models) => {
+        Account.hasMany(models.Employee, {
+            foreignKey: 'accountId',
+            as: 'Employees'
+        });
+    };
+
+    return Account;
 }

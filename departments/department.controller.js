@@ -5,7 +5,10 @@ module.exports = {
   getById, 
   create, 
   update, 
-  delete: _delete };
+  delete: _delete 
+};
+
+// ===== Controller Handlers ======
 
 async function getAll(req, res, next) {
   try {
@@ -42,5 +45,3 @@ async function _delete(req, res, next) {
     res.json({ message: 'Department deleted' });
   } catch (err) { next(err); }
 }
-
-

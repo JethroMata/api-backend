@@ -1,4 +1,3 @@
-// src/_helpers/db.js
 const config = require('config.json');
 const mysql = require('mysql2/promise');
 const { Sequelize } = require('sequelize');
@@ -10,7 +9,7 @@ module.exports = db = {
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
-  process.exit(1); // make failure obvious in dev
+  process.exit(1);
 });
 
 async function initialize() {
@@ -35,7 +34,7 @@ async function initialize() {
     port,
     dialect: 'mysql',
     logging: msg => console.debug('[sequelize]', msg),
-    define: { timestamps: false }, // disable default createdAt/updatedAt
+    define: { timestamps: true },
     pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
   });
 
@@ -47,31 +46,25 @@ async function initialize() {
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
-  db.Workflow = require('../workflows/workflow.model')(sequelize);
+  db.Workflow = require('../workflows/workflow.model.js')(sequelize);
 
-
-  // 4) Define associations
-
-  // Account ↔ RefreshTokens (1 → many)
+  // 4) Define associations with correct aliases
   db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
-  // Account ↔ Employee (1 → 1)
-  db.Account.hasOne(db.Employee, { foreignKey: 'accountId', onDelete: 'CASCADE' });
-  db.Employee.belongsTo(db.Account, { foreignKey: 'accountId' });
+  db.Account.hasOne(db.Employee, { as: 'Account', foreignKey: 'accountId', onDelete: 'CASCADE' });
+  db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
 
-  // Department ↔ Employee (1 → many)
-  db.Department.hasMany(db.Employee, { foreignKey: 'DepartmentID', onDelete: 'SET NULL' });
-  db.Employee.belongsTo(db.Department, { foreignKey: 'DepartmentID' });
+  db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
+  db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
 
-  // Account ↔ Request (1 → many)
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
   // 5) Sync DB schema
   try {
     console.info('[DB] Syncing models to database (alter=true).');
-    await sequelize.sync(); 
+    await sequelize.sync({ alter: true });
     console.info('[DB] Sequelize sync completed.');
   } catch (syncErr) {
     console.error('[DB] Sequelize sync failed:', syncErr);

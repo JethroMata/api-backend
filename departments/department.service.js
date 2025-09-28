@@ -1,4 +1,3 @@
-// departments/department.service.js
 const db = require('_helpers/db');
 
 module.exports = {
@@ -10,7 +9,6 @@ module.exports = {
 };
 
 // ====== QUERIES ======
-
 async function getAll() {
   const departments = await db.Department.findAll({
     include: [
@@ -19,7 +17,7 @@ async function getAll() {
     order: [['id', 'ASC']]
   });
 
-  // recalc employeeCounts in case it's out of sync
+  // recalc employeeCounts
   for (const dept of departments) {
     const count = dept.Employees ? dept.Employees.length : 0;
     if (dept.employeeCounts !== count) {
@@ -39,7 +37,6 @@ async function getById(id) {
   });
   if (!department) throw 'Department not found';
 
-  // recalc employeeCounts if needed
   const count = department.Employees ? department.Employees.length : 0;
   if (department.employeeCounts !== count) {
     department.employeeCounts = count;
@@ -50,7 +47,6 @@ async function getById(id) {
 }
 
 // ====== CREATE ======
-
 async function create(params) {
   const department = new db.Department({
     departmentName: params.departmentName,
@@ -63,7 +59,6 @@ async function create(params) {
 }
 
 // ====== UPDATE ======
-
 async function update(id, params) {
   const department = await getById(id);
   if (!department) throw 'Department not found';
@@ -78,7 +73,6 @@ async function update(id, params) {
 }
 
 // ====== DELETE ======
-
 async function _delete(id) {
   const department = await getById(id);
   if (!department) throw 'Department not found';

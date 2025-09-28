@@ -4,7 +4,7 @@
         "port": 3306,
         "user": "root",
         "password": "root",
-        "database": "node-mysql-signup-verification-api"
+        "database": "trial_db105"
     },
     "secret": "49857eae-5b2d-4e74-b5e7-99953f347936",
     "emailFrom": "info@node-mysql-signup-verification-api.com",
@@ -14,6 +14,9 @@
         "auth": {
             "user": "shyanne.hills25@ethereal.email",
             "pass": "QkMGGHJaq2WcpKHME6"
+        },
+        "tls": {
+            "rejectUnauthorized": false
         }
     }
 }

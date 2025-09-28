@@ -1,4 +1,3 @@
-// employees/employee.service.js
 const db = require('_helpers/db');
 
 module.exports = {
@@ -43,7 +42,6 @@ async function generateNextEmployeeID() {
 }
 
 // ====== CREATE ======
-
 async function resolveAccount(params) {
   if (params.accountId) {
     const account = await db.Account.findByPk(params.accountId);
@@ -101,14 +99,12 @@ async function create(params) {
     }
   }
 
-  // ✅ update department employeeCounts
   if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
 
   return await getById(employee.EmployeeID);
 }
 
 // ====== UPDATE ======
-
 async function update(id, params) {
   const employee = await db.Employee.findByPk(id);
   if (!employee) throw 'Employee not found';
@@ -135,7 +131,6 @@ async function update(id, params) {
 
   await employee.save();
 
-  // ✅ update department counts
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
@@ -147,7 +142,6 @@ async function update(id, params) {
 }
 
 // ====== DELETE ======
-
 async function _delete(id) {
   const employee = await db.Employee.findByPk(id);
   if (!employee) throw 'Employee not found';
@@ -155,12 +149,10 @@ async function _delete(id) {
   const deptId = employee.departmentId;
   await employee.destroy();
 
-  // ✅ update department count
   if (deptId) await updateDepartmentCount(deptId);
 }
 
 // ====== HELPER ======
-
 async function updateDepartmentCount(departmentId) {
   if (!departmentId) return;
   const count = await db.Employee.count({ where: { departmentId } });

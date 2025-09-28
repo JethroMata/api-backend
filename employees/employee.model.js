@@ -1,4 +1,3 @@
-// employees/employee.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -10,49 +9,30 @@ module.exports = (sequelize) => {
       unique: true,
       field: 'EmployeeID'
     },
-
     accountId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
-      field: 'accountId',
-      references: {
-        model: 'accounts',
-        key: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'CASCADE'
+      field: 'accountId'
     },
-
     position: {
       type: DataTypes.STRING,
       allowNull: true
     },
-
-    // ✅ foreign key to departments.id
     departmentId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
-      field: 'DepartmentID',
-      references: {
-        model: 'departments',
-        key: 'id'
-      },
-      onUpdate: 'CASCADE',
-      onDelete: 'SET NULL'
+      field: 'DepartmentID'
     },
-
     hireDate: {
       type: DataTypes.DATEONLY,
       allowNull: true,
       field: 'hireDate'
     },
-
     status: {
       type: DataTypes.ENUM('active', 'inactive'),
       allowNull: false,
       defaultValue: 'active'
     },
-
     createdAt: {
       type: DataTypes.DATE,
       allowNull: true,
@@ -75,20 +55,18 @@ module.exports = (sequelize) => {
   const Employee = sequelize.define('Employee', attributes, options);
 
   Employee.associate = (models) => {
-    if (models.Account) {
-      Employee.belongsTo(models.Account, {
-        foreignKey: 'accountId',
-        targetKey: 'id',
-        as: 'Account'
-      });
-    }
-    if (models.Department) {
-      Employee.belongsTo(models.Department, {
-        foreignKey: 'departmentId',
-        targetKey: 'id',
-        as: 'Department'
-      });
-    }
+    Employee.belongsTo(models.Account, {
+      foreignKey: 'accountId',
+      as: 'Account',
+      onDelete: 'CASCADE',
+      onUpdate: 'CASCADE'
+    });
+    Employee.belongsTo(models.Department, {
+      foreignKey: 'departmentId',
+      as: 'Department', // ✅ must match service include
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    });
   };
 
   return Employee;
