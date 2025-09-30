@@ -1,5 +1,5 @@
-// requests/request.service.js
 const db = require('_helpers/db');
+const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 
 module.exports = {
   getAll,
@@ -33,6 +33,11 @@ async function resolveAccountIdFromEmail(email) {
   if (!email) return null;
   const account = await db.Account.findOne({ where: { email } });
   return account ? account.id : null;
+}
+
+async function resolveEmployeeFromAccount(accountId) {
+  if (!accountId) return null;
+  return await db.Employee.findOne({ where: { accountId } });
 }
 
 // ------------------------- Create -------------------------
@@ -78,15 +83,21 @@ async function create(params) {
     created: new Date()
   });
 
+  // 🔹 log workflow
+  const employee = await resolveEmployeeFromAccount(accountId);
+  if (employee) {
+    await logWorkflow(
+      employee.EmployeeID,
+      'Request Created',
+      `Request #${r.id || r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
+    );
+  }
+
   const pk = r.requestId ?? r.id ?? null;
   return await getById(pk);
 }
 
 // ------------------------- Update -------------------------
-/**
- * update(requestId, params)
- * allowed fields to update: accountId, type, items, quantity, status
- */
 async function update(requestId, params) {
   const request = await db.Request.findByPk(requestId);
   if (!request) throw 'Request not found';
@@ -132,6 +143,16 @@ async function update(requestId, params) {
   request.updated = new Date();
   await request.save();
 
+  // 🔹 log workflow
+  const employee = await resolveEmployeeFromAccount(request.accountId);
+  if (employee) {
+    await logWorkflow(
+      employee.EmployeeID,
+      'Request Updated',
+      `Request #${request.id || request.requestId} updated (status: ${request.status})`
+    );
+  }
+
   const pk = request.requestId ?? request.id ?? null;
   return await getById(pk);
 }
@@ -140,5 +161,16 @@ async function update(requestId, params) {
 async function _delete(requestId) {
   const r = await db.Request.findByPk(requestId);
   if (!r) throw 'Request not found';
+  const emp = await resolveEmployeeFromAccount(r.accountId);
+
   await r.destroy();
+
+  // 🔹 log workflow
+  if (emp) {
+    await logWorkflow(
+      emp.EmployeeID,
+      'Request Deleted',
+      `Request #${requestId} was deleted`
+    );
+  }
 }

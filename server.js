@@ -19,19 +19,16 @@ app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: 
 const accountRoutes = require('./accounts/accounts.controller');
 const employeeRoutes = require('./employees/employee.controller');
 const departmentRoutes = require('./departments');
-
-// IMPORTANT: require the requests **router** (./requests) — not the controller file
-// This will load requests/index.js which should export an Express router.
-const requestRoutes = require('./requests'); // <- corrected
+const requestRoutes = require('./requests');
 
 // mount routes
 app.use('/accounts', accountRoutes);
 app.use('/employees', employeeRoutes);
 app.use('/departments', departmentRoutes);
 app.use('/requests', requestRoutes);
-app.use('/workflows', require('./workflows/workflow.controller'));
 
-// app.use('/refreshtokens', refreshTokenRoutes);
+// mount workflow routes (separate to avoid conflict)
+app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
 
 // global error handler
 app.use(errorHandler);

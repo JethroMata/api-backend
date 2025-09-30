@@ -1,4 +1,3 @@
-// account.service.js
 const config = require('config.json');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
@@ -7,6 +6,7 @@ const { Op } = require('sequelize');
 const sendEmail = require('_helpers/send-email');
 const db = require('_helpers/db');
 const Role = require('_helpers/role');
+const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 
 module.exports = {
   authenticate,
@@ -173,6 +173,16 @@ async function create(params) {
   });
 
   await account.save();
+
+  // 🔹 log workflow if linked to employee
+  if (params.EmployeeID) {
+    await logWorkflow(
+      params.EmployeeID,
+      'Account Created',
+      `Account ${account.email} created and linked to employee`
+    );
+  }
+
   return basicDetails(account);
 }
 

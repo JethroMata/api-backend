@@ -111,6 +111,14 @@ async function transferDepartment(req, res, next) {
     employee.departmentId = toDeptId;
     await employee.save();
 
+    // 🔹 log workflow for transfer
+    const logWorkflow = require('_helpers/workflow-logger');
+    await logWorkflow(
+      employee.EmployeeID,
+      'Transferred',
+      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
+    );
+
     res.json({
       message: `Employee ${employeeId} transferred successfully`,
       fromDeptId,
@@ -122,3 +130,5 @@ async function transferDepartment(req, res, next) {
     next(err);
   }
 }
+
+

@@ -1,11 +1,11 @@
-const config = require('config.json');
+// _helpers/db.js
 const mysql = require('mysql2/promise');
+const config = require('config.json');
 const { Sequelize } = require('sequelize');
 
-module.exports = db = {
-  sequelize: null,
-  Sequelize
-};
+module.exports = (db = {});
+db.sequelize = null;
+db.Sequelize = Sequelize;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
@@ -19,7 +19,7 @@ async function initialize() {
     throw new Error('Missing database configuration in config.json');
   }
 
-  // 1) Ensure database exists
+  // ensure database exists
   const createConn = await mysql.createConnection({ host, port, user, password });
   try {
     await createConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
@@ -28,7 +28,7 @@ async function initialize() {
     await createConn.end();
   }
 
-  // 2) Initialize Sequelize
+  // initialize sequelize
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
@@ -40,15 +40,24 @@ async function initialize() {
 
   db.sequelize = sequelize;
 
-  // 3) Import models
+  // -------------------------
+  // IMPORT MODELS (ensure correct order)
+  // -------------------------
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
-  db.Workflow = require('../workflows/workflow.model.js')(sequelize);
 
-  // 4) Define associations with correct aliases
+  // Register EmployeeWorkflow model (new)
+  db.EmployeeWorkflow = require('../employees/employee-workflow.model.js')(sequelize);
+
+  // If you previously had a generic workflows folder, keep it if needed:
+  // db.Workflow = require('../workflows/workflow.model.js')(sequelize);
+
+  // -------------------------
+  // Define associations
+  // -------------------------
   db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
@@ -61,7 +70,13 @@ async function initialize() {
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
-  // 5) Sync DB schema
+  // optional association for workflow -> employee (no cascading)
+  if (db.EmployeeWorkflow && db.Employee) {
+    db.Employee.hasMany(db.EmployeeWorkflow, { foreignKey: 'employeeId', sourceKey: 'EmployeeID', as: 'Workflows', constraints: false });
+    db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
+  }
+
+  // sync
   try {
     console.info('[DB] Syncing models to database (alter=true).');
     await sequelize.sync({ alter: true });

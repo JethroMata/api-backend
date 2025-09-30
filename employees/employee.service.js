@@ -1,4 +1,6 @@
+// employees/employee.service.js
 const db = require('_helpers/db');
+const logWorkflow = require('_helpers/workflow-logger');
 
 module.exports = {
   getAll,
@@ -10,7 +12,6 @@ module.exports = {
 };
 
 // ====== QUERIES ======
-
 async function getAll() {
   return await db.Employee.findAll({
     include: [
@@ -101,6 +102,9 @@ async function create(params) {
 
   if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
 
+  // 🔹 log workflow
+  await logWorkflow(employee.EmployeeID, 'Employee Created', `Employee linked to account ${account.email}`);
+
   return await getById(employee.EmployeeID);
 }
 
@@ -110,6 +114,7 @@ async function update(id, params) {
   if (!employee) throw 'Employee not found';
 
   const oldDept = employee.departmentId;
+  const oldStatus = employee.status;
 
   if (params.accountId && params.accountId !== employee.accountId) {
     const account = await db.Account.findByPk(params.accountId);
@@ -117,6 +122,7 @@ async function update(id, params) {
     const duplicate = await db.Employee.findOne({ where: { accountId: params.accountId } });
     if (duplicate) throw 'Employee for this account already exists';
     employee.accountId = params.accountId;
+    await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
   const allowed = ['position', 'departmentId', 'hireDate', 'status'];
@@ -131,11 +137,21 @@ async function update(id, params) {
 
   await employee.save();
 
+  // 🔹 log transfer if department changed
   if (params.departmentId && params.departmentId !== oldDept) {
     if (oldDept) await updateDepartmentCount(oldDept);
     if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
+
+    await logWorkflow(employee.EmployeeID, 'Transferred',
+      `Moved from department ${oldDept || 'None'} to ${employee.departmentId}`);
   } else if (params.departmentId) {
     await updateDepartmentCount(employee.departmentId);
+  }
+
+  // 🔹 log status change
+  if (params.status && params.status.toLowerCase() !== oldStatus) {
+    await logWorkflow(employee.EmployeeID, 'Status Changed',
+      `Changed from ${oldStatus} to ${employee.status}`);
   }
 
   return await getById(employee.EmployeeID);
@@ -147,9 +163,14 @@ async function _delete(id) {
   if (!employee) throw 'Employee not found';
 
   const deptId = employee.departmentId;
+  const empId = employee.EmployeeID;
+
   await employee.destroy();
 
   if (deptId) await updateDepartmentCount(deptId);
+
+  // 🔹 log deletion
+  await logWorkflow(empId, 'Employee Deleted', `Employee record was removed`);
 }
 
 // ====== HELPER ======
