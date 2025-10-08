@@ -255,9 +255,19 @@ function _delete(req, res, next) {
 
 // -------------------- HELPERS --------------------
 
+// function setTokenCookie(res, token) {
+//   const cookieOptions = {
+//     httpOnly: true,
+//     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+//   };
+//   res.cookie('refreshToken', token, cookieOptions);
+// }
+
 function setTokenCookie(res, token) {
   const cookieOptions = {
     httpOnly: true,
+    secure: true,       // ✅ required for HTTPS
+    sameSite: 'none',   // ✅ allow cross-origin cookie
     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   };
   res.cookie('refreshToken', token, cookieOptions);
