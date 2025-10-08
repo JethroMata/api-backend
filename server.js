@@ -13,30 +13,7 @@ app.use(bodyParser.json());
 app.use(cookieParser());
 
 // allow cors requests from any origin and with credentials
-//app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
-// ✅ CORS configuration for HTTPS production
-const allowedOrigins = [
-  'https://api-angular-frontend-mu.vercel.app/', // 👈 replace this with your actual frontend URL
-  'http://localhost:4200' // keep localhost for testing
-];
-
-app.use(cors({
-  origin: function (origin, callback) {
-    // allow requests with no origin (e.g., mobile apps or curl)
-    if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS'));
-    }
-  },
-  credentials: true
-}));
-
-
-
-
-
+app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
 
 // api routes
 const accountRoutes = require('./accounts/accounts.controller');
