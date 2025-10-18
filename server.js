@@ -6,6 +6,7 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const errorHandler = require('_middleware/error-handler');
+const positionRoutes = require('./positions');
 
 // middleware
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -26,6 +27,7 @@ app.use('/accounts', accountRoutes);
 app.use('/employees', employeeRoutes);
 app.use('/departments', departmentRoutes);
 app.use('/requests', requestRoutes);
+app.use('/positions', positionRoutes);
 
 // mount workflow routes (separate to avoid conflict)
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));

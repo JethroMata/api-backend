@@ -23,6 +23,14 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'DepartmentID'
     },
+
+
+    positionId: {
+  type: DataTypes.INTEGER.UNSIGNED,
+  allowNull: true,
+  field: 'positionId'
+},
+
     hireDate: {
       type: DataTypes.DATEONLY,
       allowNull: true,
