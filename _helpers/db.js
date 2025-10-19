@@ -70,7 +70,7 @@ async function initialize() {
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
   // Account ↔ Employee
-  db.Account.hasOne(db.Employee, { as: 'Account', foreignKey: 'accountId', onDelete: 'CASCADE' });
+  db.Account.hasOne(db.Employee, { as: 'Employee', foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
 
   // Department ↔ Employee
@@ -94,6 +94,9 @@ async function initialize() {
     onDelete: 'SET NULL',
     onUpdate: 'CASCADE'
   });
+
+  // ✅ Employee ↔ Head (self-reference)
+db.Employee.belongsTo(db.Employee, { as: 'Head', foreignKey: 'headId', onDelete: 'SET NULL' });
 
   // Employee ↔ EmployeeWorkflow
   if (db.EmployeeWorkflow && db.Employee) {

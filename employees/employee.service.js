@@ -8,19 +8,41 @@ module.exports = {
   create,
   update,
   delete: _delete,
+  getManagers, // ✅ added
   generateNextEmployeeID
 };
 
 // ====== QUERIES ======
-async function getAll() {
+async function getAll(options = {}) {
   return await db.Employee.findAll({
     include: [
-      { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
+      {
+        model: db.Account,
+        as: 'Account',
+        attributes: ['id', 'firstName', 'lastName', 'email']
+      },
+      {
+        model: db.Department,
+        as: 'Department',
+        attributes: ['id', 'departmentName']
+      },
+      {
+        model: db.Employee,
+        as: 'Head',
+        include: [
+          {
+            model: db.Account,
+            as: 'Account',
+            attributes: ['firstName', 'lastName']
+          }
+        ],
+        attributes: ['EmployeeID']
+      }
     ],
-    order: [['created', 'DESC']]
+    order: [['EmployeeID', 'ASC']]
   });
 }
+
 
 async function getById(id) {
   return await db.Employee.findByPk(id, {
@@ -29,6 +51,28 @@ async function getById(id) {
       { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
     ]
   });
+}
+
+async function getManagers() {
+  const managers = await db.Employee.findAll({
+    where: db.Sequelize.where(
+      db.Sequelize.fn('LOWER', db.Sequelize.col('position')),
+      'manager'
+    ),
+    include: [
+      { model: db.Account, as: 'Account', attributes: ['id', 'firstName', 'lastName', 'email'] }
+    ],
+    order: [['EmployeeID', 'ASC']] // ✅ FIXED
+  });
+
+  return managers.map(m => ({
+    id: m.id,
+    employeeId: m.EmployeeID,
+    firstName: m.Account?.firstName,
+    lastName: m.Account?.lastName,
+    email: m.Account?.email,
+    position: m.position
+  }));
 }
 
 async function generateNextEmployeeID() {
@@ -68,6 +112,7 @@ async function create(params) {
     accountId: account.id,
     position: params.position || null,
     departmentId: params.departmentId || null,
+    headId: params.headId || null, // 👈 added
     hireDate: params.hireDate || null,
     status,
     created: new Date()
@@ -125,15 +170,13 @@ async function update(id, params) {
     await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
-  const allowed = ['position', 'departmentId', 'hireDate', 'status'];
-  for (const f of allowed) {
-    if (params[f] !== undefined) {
-      employee[f] =
-        f === 'status'
-          ? (params[f] || 'active').toString().toLowerCase()
-          : params[f];
-    }
+ const allowed = ['position', 'departmentId', 'hireDate', 'status', 'headId']; // 👈 add headId
+for (const f of allowed) {
+  if (params[f] !== undefined) {
+    employee[f] = params[f];
   }
+}
+
 
   await employee.save();
 

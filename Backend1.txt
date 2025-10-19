@@ -152,7 +152,7 @@ function model(sequelize) {
 
 ================================================================================
 File: accounts\account.service.js
-Size: 10.04 kB
+Size: 10.47 kB
 ================================================================================
 
 const config = require('config.json');
@@ -178,7 +178,8 @@ module.exports = {
   getById,
   create,
   update,
-  delete: _delete
+  delete: _delete,
+  getManagers // 👈 ADD THIS
 };
 
 // ------------------------- Authentication -------------------------
@@ -300,6 +301,17 @@ async function getAll() {
 async function getById(id) {
   const account = await getAccount(id);
   return account ? basicDetails(account) : null;
+}
+
+// ------------------------- MANAGER FETCH -------------------------
+async function getManagers() {
+  return await db.Account.findAll({
+    where: {
+      role: 'Manager',            // ✅ adjust if your manager role string differs
+      status: 'active'            // only include active accounts
+    },
+    attributes: ['id', 'firstName', 'lastName', 'email', 'role', 'status']
+  });
 }
 
 async function create(params) {
@@ -473,7 +485,7 @@ async function sendPasswordResetEmail(account, origin) {
 
 ================================================================================
 File: accounts\accounts.controller.js
-Size: 9 kB
+Size: 9.65 kB
 ================================================================================
 
 ﻿// accounts.controller.js
@@ -496,10 +508,13 @@ router.post('/validate-reset-token', validateResetTokenSchema, validateResetToke
 router.post('/reset-password', resetPasswordSchema, resetPassword);
 
 router.get('/', authorize(Role.Admin), getAll);
+// -------------------- MANAGER ROUTE --------------------
+router.get('/managers', authorize(), getManagers);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
 router.delete('/:id', authorize(), _delete);
+
 
 module.exports = router;
 
@@ -731,11 +746,29 @@ function _delete(req, res, next) {
     .catch(next);
 }
 
+
+// -------------------- MANAGER HANDLER --------------------
+function getManagers(req, res, next) {
+  accountService.getManagers()
+    .then(managers => res.json(managers))
+    .catch(next);
+}
+
 // -------------------- HELPERS --------------------
+
+// function setTokenCookie(res, token) {
+//   const cookieOptions = {
+//     httpOnly: true,
+//     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
+//   };
+//   res.cookie('refreshToken', token, cookieOptions);
+// }
 
 function setTokenCookie(res, token) {
   const cookieOptions = {
     httpOnly: true,
+    secure: true,       // ✅ required for HTTPS
+    sameSite: 'none',   // ✅ allow cross-origin cookie
     expires: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)
   };
   res.cookie('refreshToken', token, cookieOptions);
@@ -781,16 +814,16 @@ function model(sequelize) {
 
 ================================================================================
 File: config.json
-Size: 514 B
+Size: 577 B
 ================================================================================
 
 {
     "database": {
-        "host": "localhost",
-        "port": 3306,
-        "user": "root",
-        "password": "root",
-        "database": "interface4"
+        "host": "mysql-29facdb1-jethromata1-9b16.e.aivencloud.com",
+        "port": 21608,
+        "user": "avnadmin",
+        "password": "AVNS_i_Cmdjb1usphQ5pdDfg",
+        "database": "defaultdb"
     },
     "secret": "15c2fc47-f7ff-4bd1-a98c-5b298c497e87",
     "emailFrom": "info@node-mysql-signup-verification-api.com",
@@ -1086,7 +1119,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.controller.js
-Size: 3.76 kB
+Size: 4.17 kB
 ================================================================================
 
 // employees/employees.controller.js
@@ -1100,6 +1133,7 @@ const db = require('../_helpers/db'); // needed for direct employee lookup
 // ===== Routes =====
 router.get('/', /* authorize(Role.Admin), */ getAll);
 router.get('/next-id', /* authorize(Role.Admin), */ getNextId);
+router.get('/head/:departmentId', authorize(), getDepartmentHead);
 router.get('/:id', /* authorize(Role.Admin), */ getById);
 router.post('/', authorize(Role.Admin), create);
 router.put('/:id', /* authorize(Role.Admin), */ update);
@@ -1135,6 +1169,16 @@ async function getNextId(req, res, next) {
     console.error('Error in getNextId:', err);
     next(err);
   }
+}
+
+async function getDepartmentHead(req, res, next) {
+  const { departmentId } = req.params;
+  db.Employee.findOne({
+    where: { departmentId, position: 'Manager' },
+    include: [{ model: db.Account, as: 'Account', attributes: ['id', 'firstName', 'lastName', 'email'] }]
+  })
+  .then(head => res.json(head))
+  .catch(next);
 }
 
 // Get one employee by EmployeeID
@@ -1227,7 +1271,7 @@ async function transferDepartment(req, res, next) {
 
 ================================================================================
 File: employees\employee.model.js
-Size: 1.68 kB
+Size: 2 kB
 ================================================================================
 
 const { DataTypes } = require('sequelize');
@@ -1255,6 +1299,25 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'DepartmentID'
     },
+
+
+    positionId: {
+  type: DataTypes.INTEGER.UNSIGNED,
+  allowNull: true,
+  field: 'positionId'
+},
+
+// 👇 NEW FIELD
+    headId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      field: 'HeadID',
+      references: {
+        model: 'accounts',
+        key: 'id'
+      }
+    },
+
     hireDate: {
       type: DataTypes.DATEONLY,
       allowNull: true,
@@ -1307,7 +1370,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.service.js
-Size: 6.06 kB
+Size: 6.03 kB
 ================================================================================
 
 // employees/employee.service.js
@@ -1380,6 +1443,7 @@ async function create(params) {
     accountId: account.id,
     position: params.position || null,
     departmentId: params.departmentId || null,
+    headId: params.headId || null, // 👈 added
     hireDate: params.hireDate || null,
     status,
     created: new Date()
@@ -1437,15 +1501,13 @@ async function update(id, params) {
     await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
   }
 
-  const allowed = ['position', 'departmentId', 'hireDate', 'status'];
-  for (const f of allowed) {
-    if (params[f] !== undefined) {
-      employee[f] =
-        f === 'status'
-          ? (params[f] || 'active').toString().toLowerCase()
-          : params[f];
-    }
+ const allowed = ['position', 'departmentId', 'hireDate', 'status', 'headId']; // 👈 add headId
+for (const f of allowed) {
+  if (params[f] !== undefined) {
+    employee[f] = params[f];
   }
+}
+
 
   await employee.save();
 
@@ -1537,6 +1599,213 @@ Size: 962 B
   }
 }
 
+
+================================================================================
+File: positions\index.js
+Size: 354 B
+================================================================================
+
+const express = require('express');
+const router = express.Router();
+const controller = require('./position.controller');
+
+router.get('/', controller.getAll);
+router.get('/:id', controller.getById);
+router.post('/', controller.create);
+router.put('/:id', controller.update);
+router.delete('/:id', controller.delete);
+
+module.exports = router;
+
+
+================================================================================
+File: positions\position.controller.js
+Size: 1.02 kB
+================================================================================
+
+const service = require('./position.service');
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  delete: _delete
+};
+
+async function getAll(req, res, next) {
+  try {
+    const result = await service.getAll();
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getById(req, res, next) {
+  try {
+    const result = await service.getById(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function create(req, res, next) {
+  try {
+    const result = await service.create(req.body);
+    res.status(201).json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function update(req, res, next) {
+  try {
+    const result = await service.update(req.params.id, req.body);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function _delete(req, res, next) {
+  try {
+    const result = await service.delete(req.params.id);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+}
+
+
+================================================================================
+File: positions\position.model.js
+Size: 707 B
+================================================================================
+
+const { DataTypes } = require('sequelize');
+
+module.exports = (sequelize) => {
+  const Position = sequelize.define('Position', {
+    id: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      autoIncrement: true,
+      primaryKey: true
+    },
+    roleType: {
+      type: DataTypes.STRING,
+      allowNull: false
+    },
+    status: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'active'
+    }
+  }, {
+    tableName: 'positions',
+    timestamps: false
+  });
+
+  Position.associate = (models) => {
+    Position.hasMany(models.Employee, {
+      foreignKey: 'positionId',
+      as: 'Employees',
+      onDelete: 'SET NULL'
+    });
+  };
+
+  return Position;
+};
+
+
+================================================================================
+File: positions\position.service.js
+Size: 2.45 kB
+================================================================================
+
+const db = require('_helpers/db');
+
+module.exports = {
+  getAll,
+  getById,
+  create,
+  update,
+  delete: _delete
+};
+
+// ====== GET ALL ======
+async function getAll() {
+  return await db.Position.findAll({
+    attributes: ['id', 'roleType', 'status'],
+    order: [['id', 'ASC']],
+    include: [{ model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'status'] }]
+  });
+}
+
+
+// ====== GET BY ID ======
+async function getById(id) {
+  const position = await db.Position.findByPk(id, {
+    attributes: ['id', 'roleType', 'status'],
+    include: [{ model: db.Employee, as: 'Employees', attributes: ['EmployeeID', 'status'] }]
+  });
+  if (!position) throw 'Position not found';
+  return position;
+}
+
+// ====== CREATE ======
+async function create(params) {
+  if (!params.roleType) throw 'roleType is required';
+
+  const exists = await db.Position.findOne({ where: { roleType: params.roleType } });
+  if (exists) throw `Position "${params.roleType}" already exists`;
+
+  const position = new db.Position({
+    roleType: params.roleType,
+    status: params.status || 'active'
+  });
+
+  await position.save();
+  return { id: position.id, roleType: position.roleType, status: position.status };
+}
+
+// ====== UPDATE ======
+async function update(id, params) {
+  const position = await getById(id);
+  if (!position) throw 'Position not found';
+
+  if (params.id && params.id !== id) {
+    const newId = params.id;
+    const existing = await db.Position.findByPk(newId);
+    if (existing) throw `Position ID ${newId} already exists`;
+
+    await db.Employee.update({ positionId: newId }, { where: { positionId: id } });
+
+    const newPosition = await db.Position.create({
+      id: newId,
+      roleType: params.roleType || position.roleType,
+      status: params.status || position.status
+    });
+
+    await position.destroy();
+    return { id: newPosition.id, roleType: newPosition.roleType, status: newPosition.status };
+  }
+
+  if (params.roleType) position.roleType = params.roleType;
+  if (params.status) position.status = params.status;
+
+  await position.save();
+  return { id: position.id, roleType: position.roleType, status: position.status };
+}
+
+// ====== DELETE ======
+async function _delete(id) {
+  const position = await getById(id);
+  if (!position) throw 'Position not found';
+  await position.destroy();
+  return { message: 'Position deleted successfully' };
+}
 
 ================================================================================
 File: README.md
@@ -1922,7 +2191,7 @@ async function _delete(requestId) {
 
 ================================================================================
 File: server.js
-Size: 1.36 kB
+Size: 1.45 kB
 ================================================================================
 
 // server.js
@@ -1933,6 +2202,7 @@ const bodyParser = require('body-parser');
 const cookieParser = require('cookie-parser');
 const cors = require('cors');
 const errorHandler = require('_middleware/error-handler');
+const positionRoutes = require('./positions');
 
 // middleware
 app.use(bodyParser.urlencoded({ extended: false }));
@@ -1953,6 +2223,7 @@ app.use('/accounts', accountRoutes);
 app.use('/employees', employeeRoutes);
 app.use('/departments', departmentRoutes);
 app.use('/requests', requestRoutes);
+app.use('/positions', positionRoutes);
 
 // mount workflow routes (separate to avoid conflict)
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
@@ -2829,7 +3100,7 @@ module.exports = {
 
 ================================================================================
 File: _helpers\db.js
-Size: 3.44 kB
+Size: 4.12 kB
 ================================================================================
 
 // _helpers/db.js
@@ -2837,9 +3108,8 @@ const mysql = require('mysql2/promise');
 const config = require('config.json');
 const { Sequelize } = require('sequelize');
 
-module.exports = (db = {});
-db.sequelize = null;
-db.Sequelize = Sequelize;
+const db = {};
+module.exports = db;
 
 initialize().catch(err => {
   console.error('Failed to initialize DB:', err);
@@ -2853,8 +3123,15 @@ async function initialize() {
     throw new Error('Missing database configuration in config.json');
   }
 
-  // ensure database exists
-  const createConn = await mysql.createConnection({ host, port, user, password });
+  // Ensure database exists (Aiven requires SSL)
+  const createConn = await mysql.createConnection({
+    host,
+    port,
+    user,
+    password,
+    ssl: { rejectUnauthorized: false }
+  });
+
   try {
     await createConn.query(`CREATE DATABASE IF NOT EXISTS \`${database}\`;`);
     console.info(`[DB] Ensured database "${database}" exists.`);
@@ -2862,55 +3139,88 @@ async function initialize() {
     await createConn.end();
   }
 
-  // initialize sequelize
+  // Initialize Sequelize with SSL
   const sequelize = new Sequelize(database, user, password, {
     host,
     port,
     dialect: 'mysql',
+    dialectOptions: {
+      ssl: { require: true, rejectUnauthorized: false }
+    },
     logging: msg => console.debug('[sequelize]', msg),
     define: { timestamps: true },
     pool: { max: 10, min: 0, acquire: 30000, idle: 10000 }
   });
 
   db.sequelize = sequelize;
+  db.Sequelize = Sequelize;
 
-  // -------------------------
-  // IMPORT MODELS (ensure correct order)
-  // -------------------------
+  // ==============================
+  // MODELS
+  // ==============================
   db.Account = require('../accounts/account.model.js')(sequelize);
   db.RefreshToken = require('../accounts/refresh-token.model.js')(sequelize);
   db.Employee = require('../employees/employee.model.js')(sequelize);
   db.Department = require('../departments/department.model.js')(sequelize);
   db.Request = require('../requests/request.model.js')(sequelize);
-
-  // Register EmployeeWorkflow model (new)
   db.EmployeeWorkflow = require('../employees/employee-workflow.model.js')(sequelize);
+  db.Position = require('../positions/position.model.js')(sequelize);
 
-  // If you previously had a generic workflows folder, keep it if needed:
-  // db.Workflow = require('../workflows/workflow.model.js')(sequelize);
+  // ==============================
+  // ASSOCIATIONS
+  // ==============================
 
-  // -------------------------
-  // Define associations
-  // -------------------------
+  // Account ↔ RefreshToken
   db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
 
+  // Account ↔ Employee
   db.Account.hasOne(db.Employee, { as: 'Account', foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
 
+  // Department ↔ Employee
   db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
   db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
 
+  // Account ↔ Request
   db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
   db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
 
-  // optional association for workflow -> employee (no cascading)
+  // ✅ Position ↔ Employee
+  db.Position.hasMany(db.Employee, {
+    foreignKey: 'positionId',
+    as: 'Employees',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
+  });
+  db.Employee.belongsTo(db.Position, {
+    foreignKey: 'positionId',
+    as: 'Position',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
+  });
+
+  db.Employee.belongsTo(db.Account, { as: 'Head', foreignKey: 'headId' });
+
+  // Employee ↔ EmployeeWorkflow
   if (db.EmployeeWorkflow && db.Employee) {
-    db.Employee.hasMany(db.EmployeeWorkflow, { foreignKey: 'employeeId', sourceKey: 'EmployeeID', as: 'Workflows', constraints: false });
-    db.EmployeeWorkflow.belongsTo(db.Employee, { foreignKey: 'employeeId', targetKey: 'EmployeeID', as: 'Employee', constraints: false });
+    db.Employee.hasMany(db.EmployeeWorkflow, {
+      foreignKey: 'employeeId',
+      sourceKey: 'EmployeeID',
+      as: 'Workflows',
+      constraints: false
+    });
+    db.EmployeeWorkflow.belongsTo(db.Employee, {
+      foreignKey: 'employeeId',
+      targetKey: 'EmployeeID',
+      as: 'Employee',
+      constraints: false
+    });
   }
 
-  // sync
+  // ==============================
+  // SYNC MODELS
+  // ==============================
   try {
     console.info('[DB] Syncing models to database (alter=true).');
     await sequelize.sync({ alter: true });

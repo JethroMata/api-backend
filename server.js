@@ -31,6 +31,7 @@ app.use('/positions', positionRoutes);
 
 // mount workflow routes (separate to avoid conflict)
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
+app.use('/employees', require('./employees/employee.controller'));
 
 // global error handler
 app.use(errorHandler);

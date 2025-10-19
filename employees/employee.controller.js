@@ -9,6 +9,8 @@ const db = require('../_helpers/db'); // needed for direct employee lookup
 // ===== Routes =====
 router.get('/', /* authorize(Role.Admin), */ getAll);
 router.get('/next-id', /* authorize(Role.Admin), */ getNextId);
+router.get('/head/:departmentId', authorize(), getDepartmentHead);
+router.get('/managers', authorize(), getManagers);
 router.get('/:id', /* authorize(Role.Admin), */ getById);
 router.post('/', authorize(Role.Admin), create);
 router.put('/:id', /* authorize(Role.Admin), */ update);
@@ -44,6 +46,25 @@ async function getNextId(req, res, next) {
     console.error('Error in getNextId:', err);
     next(err);
   }
+}
+
+async function getManagers(req, res, next) {
+  try {
+    const managers = await employeeService.getManagers();
+    res.json(managers);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getDepartmentHead(req, res, next) {
+  const { departmentId } = req.params;
+  db.Employee.findOne({
+    where: { departmentId, position: 'Manager' },
+    include: [{ model: db.Account, as: 'Account', attributes: ['id', 'firstName', 'lastName', 'email'] }]
+  })
+  .then(head => res.json(head))
+  .catch(next);
 }
 
 // Get one employee by EmployeeID

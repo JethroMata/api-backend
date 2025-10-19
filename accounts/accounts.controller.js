@@ -18,10 +18,13 @@ router.post('/validate-reset-token', validateResetTokenSchema, validateResetToke
 router.post('/reset-password', resetPasswordSchema, resetPassword);
 
 router.get('/', authorize(Role.Admin), getAll);
+// -------------------- MANAGER ROUTE --------------------
+router.get('/managers', /*authorize(),*/ getManagers);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
 router.delete('/:id', authorize(), _delete);
+
 
 module.exports = router;
 
@@ -178,6 +181,8 @@ function getAll(req, res, next) {
     .catch(next);
 }
 
+
+
 function getById(req, res, next) {
   if (!req.user) return res.status(401).json({ message: 'Unauthorized' });
   if (String(req.params.id) !== String(req.user.id) && req.user.role !== Role.Admin) {
@@ -250,6 +255,14 @@ function update(req, res, next) {
 function _delete(req, res, next) {
   accountService.delete(req.params.id)
     .then(() => res.json({ message: 'Account deleted successfully' }))
+    .catch(next);
+}
+
+
+// -------------------- MANAGER HANDLER --------------------
+function getManagers(req, res, next) {
+  accountService.getManagers()
+    .then(managers => res.json(managers))
     .catch(next);
 }
 

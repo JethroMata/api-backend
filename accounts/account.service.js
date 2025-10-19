@@ -21,7 +21,8 @@ module.exports = {
   getById,
   create,
   update,
-  delete: _delete
+  delete: _delete,
+  getManagers // 👈 ADD THIS
 };
 
 // ------------------------- Authentication -------------------------
@@ -143,6 +144,29 @@ async function getAll() {
 async function getById(id) {
   const account = await getAccount(id);
   return account ? basicDetails(account) : null;
+}
+
+// ------------------------- MANAGER FETCH -------------------------
+async function getManagers() {
+  try {
+    const managers = await db.Account.findAll({
+      include: [
+        {
+          model: db.Employee,
+          as: 'Employee',
+          where: { position: 'Manager' },
+          required: true
+        }
+      ],
+      attributes: ['id', 'firstName', 'lastName', 'email']
+    });
+
+    console.log('✅ Managers found:', managers.length);
+    return managers; // ✅ return data, don't use res.json()
+  } catch (err) {
+    console.error('❌ Error fetching managers:', err);
+    throw err; // ✅ throw error to let controller handle it
+  }
 }
 
 async function create(params) {

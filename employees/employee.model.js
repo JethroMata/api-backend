@@ -31,6 +31,17 @@ module.exports = (sequelize) => {
   field: 'positionId'
 },
 
+// 👇 NEW FIELD
+    headId: {
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      field: 'HeadID',
+      references: {
+        model: 'accounts',
+        key: 'id'
+      }
+    },
+
     hireDate: {
       type: DataTypes.DATEONLY,
       allowNull: true,
