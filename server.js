@@ -26,7 +26,7 @@ const requestRoutes = require('./requests');
 app.use('/accounts', accountRoutes);
 app.use('/employees', employeeRoutes);
 app.use('/departments', departmentRoutes);
-app.use('/api/requests', requestRoutes);
+app.use('/requests', requestRoutes);
 app.use('/positions', positionRoutes);
 
 // mount workflow routes (separate to avoid conflict)
