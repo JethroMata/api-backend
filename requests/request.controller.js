@@ -5,6 +5,9 @@ const requestService = require('./request.service');
 
 module.exports = {
   getAll,
+  getPending,
+  approve,
+  reject,
   getById,
   createSchema,
   create,
@@ -22,7 +25,7 @@ function createSchema(req, res, next) {
     type: Joi.string().valid('equipment', 'leave', 'resources').required(),
     items: Joi.string().trim().min(1).required(),
     quantity: Joi.number().integer().min(1).required(),
-    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected').optional()
+    status: Joi.string().valid('draft', 'pending', 'approved', 'rejected').optional()
   });
   validateRequest(req, next, schema);
 }
@@ -34,7 +37,7 @@ function updateSchema(req, res, next) {
     type: Joi.string().valid('equipment', 'leave', 'resources').optional(),
     items: Joi.string().trim().min(1).optional(),
     quantity: Joi.number().integer().min(1).optional(),
-    status: Joi.string().valid('pending', 'approved', 'disapproved', 'rejected').optional()
+    status: Joi.string().valid('draft', 'pending', 'approved', 'rejected').optional()
   });
   validateRequest(req, next, schema);
 }
@@ -45,6 +48,33 @@ async function getAll(req, res, next) {
   try {
     const list = await requestService.getAll();
     res.json(list);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function getPending(req, res, next) {
+  try {
+    const list = await requestService.getPending();
+    res.json(list);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function approve(req, res, next) {
+  try {
+    const updated = await requestService.updateStatus(req.params.requestId, 'approved');
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
+async function reject(req, res, next) {
+  try {
+    const updated = await requestService.updateStatus(req.params.requestId, 'rejected');
+    res.json(updated);
   } catch (err) {
     next(err);
   }

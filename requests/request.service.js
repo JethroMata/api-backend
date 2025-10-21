@@ -3,6 +3,8 @@ const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 
 module.exports = {
   getAll,
+  getPending,
+  updateStatus,
   getById,
   create,
   update,
@@ -10,7 +12,7 @@ module.exports = {
 };
 
 const ALLOWED_TYPES = ['equipment', 'leave', 'resources'];
-const ALLOWED_STATUS = ['pending', 'approved', 'disapproved', 'rejected'];
+const ALLOWED_STATUS = ['draft', 'pending', 'approved', 'rejected'];
 
 // ------------------------- Get all -------------------------
 async function getAll() {
@@ -18,6 +20,27 @@ async function getAll() {
     include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
     order: [['created', 'DESC']]
   });
+}
+
+async function getPending() {
+  return await db.Request.findAll({
+    where: { status: 'pending' },
+    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
+    order: [['created', 'DESC']]
+  });
+}
+
+async function updateStatus(requestId, status) {
+  const request = await db.Request.findByPk(requestId);
+  if (!request) throw 'Request not found';
+
+  if (!['approved', 'rejected'].includes(status)) throw 'Invalid status change';
+
+  request.status = status;
+  request.updated = new Date();
+  await request.save();
+
+  return await getById(requestId);
 }
 
 // ------------------------- Get by requestId -------------------------
@@ -79,7 +102,7 @@ async function create(params) {
     type: params.type,
     items: String(params.items).trim(),
     quantity: Math.trunc(qty),
-    status: params.status || 'pending',
+    status: params.status || 'draft',
     created: new Date()
   });
 
@@ -101,6 +124,19 @@ async function create(params) {
 async function update(requestId, params) {
   const request = await db.Request.findByPk(requestId);
   if (!request) throw 'Request not found';
+
+  // 🔒 Allow draft → pending, block everything else
+if (['approved', 'rejected'].includes(request.status)) {
+  throw `Cannot edit an ${request.status.toUpperCase()} request`;
+}
+
+// ✅ Allow transition from draft → pending
+if (request.status === 'draft' && params.status === 'pending') {
+  request.status = 'pending';
+  request.updated = new Date();
+  await request.save();
+  return await getById(requestId);
+}
 
   // If employeeEmail provided and accountId not, try to resolve
   if (!params.accountId && params.employeeEmail) {
@@ -174,3 +210,10 @@ async function _delete(requestId) {
     );
   }
 }
+
+// if (params.status === 'pending' && request.status === 'draft') {
+//   // Transition draft → pending
+//   await logWorkflow(employee.EmployeeID, 'Request Submitted', `Request #${requestId} submitted for approval.`);
+// }
+
+
