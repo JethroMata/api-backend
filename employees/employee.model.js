@@ -23,15 +23,21 @@ module.exports = (sequelize) => {
       allowNull: true,
       field: 'DepartmentID'
     },
-
-
     positionId: {
-  type: DataTypes.INTEGER.UNSIGNED,
-  allowNull: true,
-  field: 'positionId'
-},
+      type: DataTypes.INTEGER.UNSIGNED,
+      allowNull: true,
+      field: 'positionId'
+    },
 
-// 👇 NEW FIELD
+    // ✅ Manager ID — store EmployeeID as string, no FK constraint
+    managerId: {
+      type: DataTypes.STRING(32),
+      allowNull: true,
+      field: 'managerId',
+      comment: 'EmployeeID of the manager supervising this employee'
+    },
+
+    // ✅ Head (still references Accounts)
     headId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: true,
@@ -80,11 +86,25 @@ module.exports = (sequelize) => {
       onDelete: 'CASCADE',
       onUpdate: 'CASCADE'
     });
+
     Employee.belongsTo(models.Department, {
       foreignKey: 'departmentId',
-      as: 'Department', // ✅ must match service include
+      as: 'Department',
       onDelete: 'SET NULL',
       onUpdate: 'CASCADE'
+    });
+
+    // ✅ Logical (non-FK) manager/subordinate relationship
+    Employee.hasMany(models.Employee, {
+      foreignKey: 'managerId',
+      sourceKey: 'EmployeeID',
+      as: 'Subordinates'
+    });
+
+    Employee.belongsTo(models.Employee, {
+      foreignKey: 'managerId',
+      targetKey: 'EmployeeID',
+      as: 'Manager'
     });
   };
 
