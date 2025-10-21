@@ -1,4 +1,4 @@
-// employees/employee.service.js
+// services/employee.service.js
 const db = require('_helpers/db');
 const logWorkflow = require('_helpers/workflow-logger');
 
@@ -8,23 +8,23 @@ module.exports = {
   create,
   update,
   delete: _delete,
-  getManagers, // ✅ added
-  generateNextEmployeeID
+  getManagers,
+  generateNextEmployeeID,
 };
 
 // ====== QUERIES ======
-async function getAll(options = {}) {
+async function getAll() {
   return await db.Employee.findAll({
     include: [
       {
         model: db.Account,
         as: 'Account',
-        attributes: ['id', 'firstName', 'lastName', 'email']
+        attributes: ['id', 'firstName', 'lastName', 'email'],
       },
       {
         model: db.Department,
         as: 'Department',
-        attributes: ['id', 'departmentName']
+        attributes: ['id', 'departmentName'],
       },
       {
         model: db.Employee,
@@ -33,23 +33,36 @@ async function getAll(options = {}) {
           {
             model: db.Account,
             as: 'Account',
-            attributes: ['firstName', 'lastName']
-          }
+            attributes: ['firstName', 'lastName', 'email'],
+          },
         ],
-        attributes: ['EmployeeID']
-      }
+      },
     ],
-    order: [['EmployeeID', 'ASC']]
+    order: [['EmployeeID', 'ASC']],
   });
 }
-
 
 async function getById(id) {
   return await db.Employee.findByPk(id, {
     include: [
       { model: db.Account, as: 'Account' },
-      { model: db.Department, as: 'Department', attributes: ['id', 'departmentName', 'employeeCounts'] }
-    ]
+      {
+        model: db.Department,
+        as: 'Department',
+        attributes: ['id', 'departmentName', 'employeeCounts'],
+      },
+      {
+        model: db.Employee,
+        as: 'Head',
+        include: [
+          {
+            model: db.Account,
+            as: 'Account',
+            attributes: ['firstName', 'lastName', 'email'],
+          },
+        ],
+      },
+    ],
   });
 }
 
@@ -60,18 +73,22 @@ async function getManagers() {
       'manager'
     ),
     include: [
-      { model: db.Account, as: 'Account', attributes: ['id', 'firstName', 'lastName', 'email'] }
+      {
+        model: db.Account,
+        as: 'Account',
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+      },
     ],
-    order: [['EmployeeID', 'ASC']] // ✅ FIXED
+    order: [['EmployeeID', 'ASC']],
   });
 
-  return managers.map(m => ({
+  return managers.map((m) => ({
     id: m.id,
     employeeId: m.EmployeeID,
     firstName: m.Account?.firstName,
     lastName: m.Account?.lastName,
     email: m.Account?.email,
-    position: m.position
+    position: m.position,
   }));
 }
 
@@ -102,20 +119,39 @@ async function resolveAccount(params) {
 }
 
 async function create(params) {
+  // Normalize incoming names
+  if (params.departmentId && !params.DepartmentID)
+    params.DepartmentID = params.departmentId;
+  if (params.managerId && !params.headId) params.headId = params.managerId;
+
   const account = await resolveAccount(params);
   const status = (params.status || 'active').toString().toLowerCase();
 
-  const existing = await db.Employee.findOne({ where: { accountId: account.id } });
+  // ===== DEBUG LOGS =====
+  console.log('Account resolved:', account?.firstName, account?.lastName);
+  // record params before creating to verify values
+  console.log('Params before create:', JSON.stringify(params));
+  // ======================
+
+  // Copy Account name into employee fields so NOT NULL constraints (if any) are satisfied
+  params.firstName = params.firstName || account.firstName || null;
+  params.lastName = params.lastName || account.lastName || null;
+
+  const existing = await db.Employee.findOne({
+    where: { accountId: account.id },
+  });
   if (existing) throw 'Employee for this account already exists';
 
   const base = {
     accountId: account.id,
     position: params.position || null,
-    departmentId: params.departmentId || null,
-    headId: params.headId || null, // 👈 added
+    DepartmentID: params.DepartmentID || null,
+    headId: params.headId || null,
     hireDate: params.hireDate || null,
     status,
-    created: new Date()
+    created: new Date(),
+    firstName: params.firstName,
+    lastName: params.lastName,
   };
 
   let employee;
@@ -134,7 +170,7 @@ async function create(params) {
         await employee.save();
         break;
       } catch (err) {
-        const msg = (err && err.message ? err.message.toLowerCase() : '');
+        const msg = err && err.message ? err.message.toLowerCase() : '';
         const uniqueError =
           msg.includes('unique') ||
           msg.includes('duplicate') ||
@@ -145,56 +181,79 @@ async function create(params) {
     }
   }
 
-  if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
+  if (employee.DepartmentID) await updateDepartmentCount(employee.DepartmentID);
 
-  // 🔹 log workflow
-  await logWorkflow(employee.EmployeeID, 'Employee Created', `Employee linked to account ${account.email}`);
+  await logWorkflow(
+    employee.EmployeeID,
+    'Employee Created',
+    `Employee linked to account ${account.email}`
+  );
 
   return await getById(employee.EmployeeID);
 }
 
 // ====== UPDATE ======
 async function update(id, params) {
+  if (params.departmentId && !params.DepartmentID)
+    params.DepartmentID = params.departmentId;
+  if (params.managerId && !params.headId) params.headId = params.managerId;
+
   const employee = await db.Employee.findByPk(id);
   if (!employee) throw 'Employee not found';
 
-  const oldDept = employee.departmentId;
+  const oldDept = employee.DepartmentID;
   const oldStatus = employee.status;
 
   if (params.accountId && params.accountId !== employee.accountId) {
     const account = await db.Account.findByPk(params.accountId);
     if (!account) throw 'Related account not found for new accountId';
-    const duplicate = await db.Employee.findOne({ where: { accountId: params.accountId } });
+    const duplicate = await db.Employee.findOne({
+      where: { accountId: params.accountId },
+    });
     if (duplicate) throw 'Employee for this account already exists';
+
+    // If account changed, update name fields from new account
     employee.accountId = params.accountId;
-    await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
+    employee.firstName = account.firstName || employee.firstName;
+    employee.lastName = account.lastName || employee.lastName;
+
+    await logWorkflow(
+      employee.EmployeeID,
+      'Account Changed',
+      `Employee assigned to account ${account.email}`
+    );
   }
 
- const allowed = ['position', 'departmentId', 'hireDate', 'status', 'headId']; // 👈 add headId
-for (const f of allowed) {
-  if (params[f] !== undefined) {
-    employee[f] = params[f];
-  }
-}
+  const allowed = [
+    'position',
+    'DepartmentID',
+    'hireDate',
+    'status',
+    'headId',
+    'firstName',
+    'lastName',
+  ];
 
+  for (const key of allowed) {
+    if (Object.prototype.hasOwnProperty.call(params, key)) {
+      employee[key] = params[key];
+    }
+  }
 
   await employee.save();
 
-  // 🔹 log transfer if department changed
-  if (params.departmentId && params.departmentId !== oldDept) {
+  if (oldDept !== employee.DepartmentID) {
     if (oldDept) await updateDepartmentCount(oldDept);
-    if (employee.departmentId) await updateDepartmentCount(employee.departmentId);
-
-    await logWorkflow(employee.EmployeeID, 'Transferred',
-      `Moved from department ${oldDept || 'None'} to ${employee.departmentId}`);
-  } else if (params.departmentId) {
-    await updateDepartmentCount(employee.departmentId);
+    if (employee.DepartmentID)
+      await updateDepartmentCount(employee.DepartmentID);
   }
 
-  // 🔹 log status change
-  if (params.status && params.status.toLowerCase() !== oldStatus) {
-    await logWorkflow(employee.EmployeeID, 'Status Changed',
-      `Changed from ${oldStatus} to ${employee.status}`);
+  if (oldStatus !== employee.status) {
+    await logWorkflow(
+      employee.EmployeeID,
+      'Status Changed',
+      `Status changed from ${oldStatus} to ${employee.status}`
+    );
   }
 
   return await getById(employee.EmployeeID);
@@ -202,26 +261,21 @@ for (const f of allowed) {
 
 // ====== DELETE ======
 async function _delete(id) {
-  const employee = await db.Employee.findByPk(id);
-  if (!employee) throw 'Employee not found';
-
-  const deptId = employee.departmentId;
-  const empId = employee.EmployeeID;
-
-  await employee.destroy();
-
+  const emp = await db.Employee.findByPk(id);
+  if (!emp) throw 'Employee not found';
+  const deptId = emp.DepartmentID;
+  await emp.destroy();
   if (deptId) await updateDepartmentCount(deptId);
-
-  // 🔹 log deletion
-  await logWorkflow(empId, 'Employee Deleted', `Employee record was removed`);
 }
 
-// ====== HELPER ======
-async function updateDepartmentCount(departmentId) {
-  if (!departmentId) return;
-  const count = await db.Employee.count({ where: { departmentId } });
-  await db.Department.update(
-    { employeeCounts: count },
-    { where: { id: departmentId } }
-  );
+// ====== Helpers ======
+async function updateDepartmentCount(deptId) {
+  const dept = await db.Department.findByPk(deptId, {
+    include: [
+      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID'] },
+    ],
+  });
+  if (!dept) return;
+  dept.employeeCounts = dept.Employees ? dept.Employees.length : 0;
+  await dept.save();
 }

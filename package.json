@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node ./server.js",
     "start:dev": "nodemon ./server.js",
-    "export:all": "folder2txt --output Backend1.txt C:/Users/HF/API/angular-backend"
+    "export:all": "folder2txt --output Backend2.txt C:/Users/MY PC/JAVA/Jdeployed production/api-backend"
   },
   "keywords": [],
   "author": "",

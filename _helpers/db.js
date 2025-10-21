@@ -18,7 +18,7 @@ async function initialize() {
     throw new Error('Missing database configuration in config.json');
   }
 
-  // Ensure database exists (Aiven requires SSL)
+  // Ensure database exists
   const createConn = await mysql.createConnection({
     host,
     port,
@@ -66,39 +66,64 @@ async function initialize() {
   // ==============================
 
   // Account ↔ RefreshToken
-  db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
-  db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
+  if (db.Account && db.RefreshToken) {
+    db.Account.hasMany(db.RefreshToken, { foreignKey: 'accountId', onDelete: 'CASCADE' });
+    db.RefreshToken.belongsTo(db.Account, { foreignKey: 'accountId' });
+  }
 
   // Account ↔ Employee
-  db.Account.hasOne(db.Employee, { as: 'Employee', foreignKey: 'accountId', onDelete: 'CASCADE' });
-  db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
+  if (db.Account && db.Employee) {
+    db.Account.hasOne(db.Employee, { as: 'Employee', foreignKey: 'accountId', onDelete: 'CASCADE' });
+    db.Employee.belongsTo(db.Account, { as: 'Account', foreignKey: 'accountId' });
+  }
 
   // Department ↔ Employee
-  db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'departmentId', onDelete: 'SET NULL' });
-  db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'departmentId' });
+  if (db.Department && db.Employee) {
+    db.Department.hasMany(db.Employee, { as: 'Employees', foreignKey: 'DepartmentID', onDelete: 'SET NULL' });
+    db.Employee.belongsTo(db.Department, { as: 'Department', foreignKey: 'DepartmentID' });
+  }
 
   // Account ↔ Request
-  db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
-  db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
+  if (db.Account && db.Request) {
+    db.Account.hasMany(db.Request, { foreignKey: 'accountId', onDelete: 'CASCADE' });
+    db.Request.belongsTo(db.Account, { foreignKey: 'accountId' });
+  }
 
-  // ✅ Position ↔ Employee
-  db.Position.hasMany(db.Employee, {
-    foreignKey: 'positionId',
-    as: 'Employees',
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE'
-  });
-  db.Employee.belongsTo(db.Position, {
-    foreignKey: 'positionId',
-    as: 'Position',
-    onDelete: 'SET NULL',
-    onUpdate: 'CASCADE'
-  });
+  // Position ↔ Employee
+  if (db.Position && db.Employee) {
+    db.Position.hasMany(db.Employee, {
+      foreignKey: 'positionId',
+      as: 'Employees',
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    });
+    db.Employee.belongsTo(db.Position, {
+      foreignKey: 'positionId',
+      as: 'Position',
+      onDelete: 'SET NULL',
+      onUpdate: 'CASCADE'
+    });
+  }
 
+  // ✅ Employee ↔ Manager (self-reference)
   // ✅ Employee ↔ Head (self-reference)
-db.Employee.belongsTo(db.Employee, { as: 'Head', foreignKey: 'headId', onDelete: 'SET NULL' });
+if (db.Employee) {
+  db.Employee.belongsTo(db.Employee, {
+    as: 'Head',
+    foreignKey: 'headId',
+    targetKey: 'EmployeeID',
+    onDelete: 'SET NULL'
+  });
+  db.Employee.hasMany(db.Employee, {
+    as: 'Subordinates',
+    foreignKey: 'headId',
+    sourceKey: 'EmployeeID',
+    onDelete: 'SET NULL'
+  });
+}
 
-  // Employee ↔ EmployeeWorkflow
+
+  // ✅ Employee ↔ EmployeeWorkflow
   if (db.EmployeeWorkflow && db.Employee) {
     db.Employee.hasMany(db.EmployeeWorkflow, {
       foreignKey: 'employeeId',
@@ -118,8 +143,8 @@ db.Employee.belongsTo(db.Employee, { as: 'Head', foreignKey: 'headId', onDelete:
   // SYNC MODELS
   // ==============================
   try {
-    console.info('[DB] Syncing models to database (alter=true).');
-    await sequelize.sync({ alter: true });
+    console.info('[DB] Syncing models to database (force=false).');
+    await sequelize.sync({ force: false });
     console.info('[DB] Sequelize sync completed.');
   } catch (syncErr) {
     console.error('[DB] Sequelize sync failed:', syncErr);
