@@ -16,14 +16,13 @@ router.post('/', authorize(Role.Admin), create);
 router.put('/:id', /* authorize(Role.Admin), */ update);
 router.delete('/:id', /* authorize(Role.Admin), */ _delete);
 
-// 🚀 New: Transfer employee to another department
+// 🚀 Transfer endpoint
 router.post('/:id/transfer', /* authorize(Role.Admin), */ transferDepartment);
 
 module.exports = router;
 
 // ===== Controller Handlers =====
 
-// Get all employees (with Department + Account)
 async function getAll(req, res, next) {
   try {
     const employees = await employeeService.getAll({
@@ -37,7 +36,6 @@ async function getAll(req, res, next) {
   }
 }
 
-// Generate next EmployeeID
 async function getNextId(req, res, next) {
   try {
     const nextId = await employeeService.generateNextEmployeeID();
@@ -67,7 +65,6 @@ async function getDepartmentHead(req, res, next) {
   .catch(next);
 }
 
-// Get one employee by EmployeeID
 async function getById(req, res, next) {
   try {
     const employee = await employeeService.getById(req.params.id, {
@@ -82,7 +79,6 @@ async function getById(req, res, next) {
   }
 }
 
-// Create new employee
 async function create(req, res, next) {
   try {
     const employee = await employeeService.create(req.body);
@@ -93,7 +89,6 @@ async function create(req, res, next) {
   }
 }
 
-// Update existing employee
 async function update(req, res, next) {
   try {
     const employee = await employeeService.update(req.params.id, req.body);
@@ -104,7 +99,6 @@ async function update(req, res, next) {
   }
 }
 
-// Delete employee
 async function _delete(req, res, next) {
   try {
     await employeeService.delete(req.params.id);
@@ -115,7 +109,7 @@ async function _delete(req, res, next) {
   }
 }
 
-// ===== New Transfer Handler =====
+// ✅ FIXED TRANSFER FUNCTION
 async function transferDepartment(req, res, next) {
   try {
     const employeeId = req.params.id;
@@ -128,28 +122,19 @@ async function transferDepartment(req, res, next) {
     const employee = await db.Employee.findByPk(employeeId);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    const fromDeptId = employee.departmentId;
-    employee.departmentId = toDeptId;
+    const fromDeptId = employee.DepartmentID;
+
+    // Update department
+    employee.DepartmentID = toDeptId;
     await employee.save();
 
-    // 🔹 log workflow for transfer
+    // Log transfer
     const logWorkflow = require('_helpers/workflow-logger');
-    await logWorkflow(
-      employee.EmployeeID,
-      'Transferred',
-      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
-    );
+    await logWorkflow(employee.EmployeeID, 'Transferred', null, fromDeptId, toDeptId);
 
-    res.json({
-      message: `Employee ${employeeId} transferred successfully`,
-      fromDeptId,
-      toDeptId,
-      employee
-    });
+    res.json({ message: `Employee ${employee.EmployeeID} transferred successfully` });
   } catch (err) {
     console.error('Error in transferDepartment:', err);
     next(err);
   }
 }
-
-

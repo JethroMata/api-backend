@@ -6,26 +6,25 @@ module.exports = (sequelize) => {
     'EmployeeWorkflow',
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      // store the employee primary key (EmployeeID) as string to match Employee model
       employeeId: { type: DataTypes.STRING(32), allowNull: false },
-      action: { type: DataTypes.STRING, allowNull: false },   // e.g. 'Employee Created'
+      action: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT, allowNull: true },
-      createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
     },
     {
       tableName: 'employee_workflows',
-      timestamps: false
+      timestamps: true, // ✅ match global define: { timestamps: true }
+      createdAt: 'createdAt',
+      updatedAt: false, // ✅ skip updatedAt column if not used
     }
   );
 
-  // optional association (not required but convenient)
   EmployeeWorkflow.associate = (models) => {
     if (models.Employee) {
       EmployeeWorkflow.belongsTo(models.Employee, {
         foreignKey: 'employeeId',
         targetKey: 'EmployeeID',
         as: 'Employee',
-        constraints: false // because targetKey isn't a numeric PK Sequelize expects by default
+        constraints: false,
       });
     }
   };

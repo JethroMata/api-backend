@@ -367,7 +367,7 @@ async function create(params) {
   return basicDetails(account);
 }
 
- async function update(id, params) {
+async function update(id, params) {
   const account = await getAccount(id);
   if (!account) throw 'Account not found';
 
@@ -1295,120 +1295,89 @@ async function transferDepartment(req, res, next) {
 
 ================================================================================
 File: employees\employee.model.js
-Size: 2.52 kB
+Size: 1.89 kB
 ================================================================================
 
-const { DataTypes } = require('sequelize');
-
+// employees/employee.model.js
 module.exports = (sequelize) => {
-  const attributes = {
-    EmployeeID: {
-      type: DataTypes.STRING(32),
-      primaryKey: true,
-      allowNull: false
+  const { DataTypes } = sequelize.Sequelize;
+
+  const Employee = sequelize.define(
+    'Employee',
+    {
+      EmployeeID: {
+        type: DataTypes.STRING(32),
+        allowNull: false,
+        primaryKey: true,
+      },
+      accountId: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: false,
+      },
+      position: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      DepartmentID: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      },
+      hireDate: {
+        type: DataTypes.DATEONLY,
+        allowNull: true,
+      },
+      status: {
+        type: DataTypes.ENUM('active', 'inactive'),
+        allowNull: false,
+        defaultValue: 'active',
+      },
+      created: {
+        type: DataTypes.DATE,
+        allowNull: false,
+      },
+      updated: {
+        type: DataTypes.DATE,
+        allowNull: false,
+        defaultValue: DataTypes.NOW,
+      },
+      positionId: {
+        type: DataTypes.INTEGER.UNSIGNED,
+        allowNull: true,
+      },
+      headId: {
+        type: DataTypes.STRING(32),
+        allowNull: true,
+      },
+      firstName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
+      lastName: {
+        type: DataTypes.STRING(255),
+        allowNull: true,
+      },
     },
-    accountId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: false,
-      references: {
-        model: 'accounts',
-        key: 'id'
-      }
-    },
-    position: {
-      type: DataTypes.STRING(255),
-      allowNull: true
-    },
-    DepartmentID: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: true,
-      references: {
-        model: 'departments',
-        key: 'id'
-      }
-    },
-    hireDate: {
-      type: DataTypes.DATEONLY,
-      allowNull: true
-    },
-    status: {
-      type: DataTypes.ENUM('active', 'inactive'),
-      allowNull: false,
-      defaultValue: 'active'
-    },
-    created: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
-    },
-    updated: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW
-    },
-    positionId: {
-      type: DataTypes.INTEGER.UNSIGNED,
-      allowNull: true,
-      references: {
-        model: 'positions',
-        key: 'id'
-      }
-    },
-    // ✅ renamed field
-    headId: {
-      type: DataTypes.STRING(32),
-      allowNull: true,
-    },
-    firstName: {
-      type: DataTypes.STRING(255),
-      allowNull: false
-    },
-    lastName: {
-      type: DataTypes.STRING(255),
-      allowNull: false
+    {
+      tableName: 'employees',
+      timestamps: false,
     }
-  };
-
-  const options = {
-    tableName: 'employees',
-    timestamps: false
-  };
-
-  const Employee = sequelize.define('Employee', attributes, options);
+  );
 
   Employee.associate = (models) => {
-    if (models.Account) {
-      Employee.belongsTo(models.Account, {
-        foreignKey: 'accountId',
-        as: 'Account'
-      });
-    }
+    Employee.belongsTo(models.Account, {
+      foreignKey: 'accountId',
+      as: 'Account',
+    });
 
-    if (models.Department) {
-      Employee.belongsTo(models.Department, {
-        foreignKey: 'DepartmentID',
-        as: 'Department'
-      });
-    }
+    Employee.belongsTo(models.Department, {
+      foreignKey: 'DepartmentID',
+      as: 'Department',
+    });
 
-    if (models.Position) {
-      Employee.belongsTo(models.Position, {
-        foreignKey: 'positionId',
-        as: 'Position'
-      });
-    }
-
-    if (models.Employee) {
-      // ✅ Head–Subordinate self reference
-      Employee.belongsTo(models.Employee, {
-        foreignKey: 'headId',
-        as: 'Head'
-      });
-      Employee.hasMany(models.Employee, {
-        foreignKey: 'headId',
-        as: 'Subordinates'
-      });
-    }
+    Employee.belongsTo(models.Employee, {
+      foreignKey: 'headId',
+      as: 'Head',
+    });
   };
 
   return Employee;
@@ -1417,10 +1386,10 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.service.js
-Size: 7.67 kB
+Size: 8.14 kB
 ================================================================================
 
-// employees/employee.service.js
+// services/employee.service.js
 const db = require('_helpers/db');
 const logWorkflow = require('_helpers/workflow-logger');
 
@@ -1431,7 +1400,7 @@ module.exports = {
   update,
   delete: _delete,
   getManagers,
-  generateNextEmployeeID
+  generateNextEmployeeID,
 };
 
 // ====== QUERIES ======
@@ -1441,12 +1410,12 @@ async function getAll() {
       {
         model: db.Account,
         as: 'Account',
-        attributes: ['id', 'firstName', 'lastName', 'email']
+        attributes: ['id', 'firstName', 'lastName', 'email'],
       },
       {
         model: db.Department,
         as: 'Department',
-        attributes: ['id', 'departmentName']
+        attributes: ['id', 'departmentName'],
       },
       {
         model: db.Employee,
@@ -1455,15 +1424,14 @@ async function getAll() {
           {
             model: db.Account,
             as: 'Account',
-            attributes: ['firstName', 'lastName', 'email']
-          }
-        ]
-      }
+            attributes: ['firstName', 'lastName', 'email'],
+          },
+        ],
+      },
     ],
-    order: [['EmployeeID', 'ASC']]
+    order: [['EmployeeID', 'ASC']],
   });
 }
-
 
 async function getById(id) {
   return await db.Employee.findByPk(id, {
@@ -1472,7 +1440,7 @@ async function getById(id) {
       {
         model: db.Department,
         as: 'Department',
-        attributes: ['id', 'departmentName', 'employeeCounts']
+        attributes: ['id', 'departmentName', 'employeeCounts'],
       },
       {
         model: db.Employee,
@@ -1481,11 +1449,11 @@ async function getById(id) {
           {
             model: db.Account,
             as: 'Account',
-            attributes: ['firstName', 'lastName', 'email']
-          }
-        ]
-      }
-    ]
+            attributes: ['firstName', 'lastName', 'email'],
+          },
+        ],
+      },
+    ],
   });
 }
 
@@ -1499,19 +1467,19 @@ async function getManagers() {
       {
         model: db.Account,
         as: 'Account',
-        attributes: ['id', 'firstName', 'lastName', 'email']
-      }
+        attributes: ['id', 'firstName', 'lastName', 'email'],
+      },
     ],
-    order: [['EmployeeID', 'ASC']]
+    order: [['EmployeeID', 'ASC']],
   });
 
-  return managers.map(m => ({
+  return managers.map((m) => ({
     id: m.id,
     employeeId: m.EmployeeID,
     firstName: m.Account?.firstName,
     lastName: m.Account?.lastName,
     email: m.Account?.email,
-    position: m.position
+    position: m.position,
   }));
 }
 
@@ -1542,17 +1510,27 @@ async function resolveAccount(params) {
 }
 
 async function create(params) {
-  // ---------- Normalize incoming parameter names (minimal change) ----------
-  // Accept departmentId (frontend) or DepartmentID (backend) and map to DepartmentID
-  if (params.departmentId && !params.DepartmentID) params.DepartmentID = params.departmentId;
-  // Accept managerId (older frontend) or headId (current) and map to headId
+  // Normalize incoming names
+  if (params.departmentId && !params.DepartmentID)
+    params.DepartmentID = params.departmentId;
   if (params.managerId && !params.headId) params.headId = params.managerId;
-  // -----------------------------------------------------------------------
 
   const account = await resolveAccount(params);
   const status = (params.status || 'active').toString().toLowerCase();
 
-  const existing = await db.Employee.findOne({ where: { accountId: account.id } });
+  // ===== DEBUG LOGS =====
+  console.log('Account resolved:', account?.firstName, account?.lastName);
+  // record params before creating to verify values
+  console.log('Params before create:', JSON.stringify(params));
+  // ======================
+
+  // Copy Account name into employee fields so NOT NULL constraints (if any) are satisfied
+  params.firstName = params.firstName || account.firstName || null;
+  params.lastName = params.lastName || account.lastName || null;
+
+  const existing = await db.Employee.findOne({
+    where: { accountId: account.id },
+  });
   if (existing) throw 'Employee for this account already exists';
 
   const base = {
@@ -1562,7 +1540,9 @@ async function create(params) {
     headId: params.headId || null,
     hireDate: params.hireDate || null,
     status,
-    created: new Date()
+    created: new Date(),
+    firstName: params.firstName,
+    lastName: params.lastName,
   };
 
   let employee;
@@ -1581,7 +1561,7 @@ async function create(params) {
         await employee.save();
         break;
       } catch (err) {
-        const msg = (err && err.message ? err.message.toLowerCase() : '');
+        const msg = err && err.message ? err.message.toLowerCase() : '';
         const uniqueError =
           msg.includes('unique') ||
           msg.includes('duplicate') ||
@@ -1594,17 +1574,20 @@ async function create(params) {
 
   if (employee.DepartmentID) await updateDepartmentCount(employee.DepartmentID);
 
-  await logWorkflow(employee.EmployeeID, 'Employee Created', `Employee linked to account ${account.email}`);
+  await logWorkflow(
+    employee.EmployeeID,
+    'Employee Created',
+    `Employee linked to account ${account.email}`
+  );
 
   return await getById(employee.EmployeeID);
 }
 
 // ====== UPDATE ======
 async function update(id, params) {
-  // ---------- Normalize incoming parameter names (minimal change) ----------
-  if (params.departmentId && !params.DepartmentID) params.DepartmentID = params.departmentId;
+  if (params.departmentId && !params.DepartmentID)
+    params.DepartmentID = params.departmentId;
   if (params.managerId && !params.headId) params.headId = params.managerId;
-  // -----------------------------------------------------------------------
 
   const employee = await db.Employee.findByPk(id);
   if (!employee) throw 'Employee not found';
@@ -1615,13 +1598,32 @@ async function update(id, params) {
   if (params.accountId && params.accountId !== employee.accountId) {
     const account = await db.Account.findByPk(params.accountId);
     if (!account) throw 'Related account not found for new accountId';
-    const duplicate = await db.Employee.findOne({ where: { accountId: params.accountId } });
+    const duplicate = await db.Employee.findOne({
+      where: { accountId: params.accountId },
+    });
     if (duplicate) throw 'Employee for this account already exists';
+
+    // If account changed, update name fields from new account
     employee.accountId = params.accountId;
-    await logWorkflow(employee.EmployeeID, 'Account Changed', `Employee assigned to account ${account.email}`);
+    employee.firstName = account.firstName || employee.firstName;
+    employee.lastName = account.lastName || employee.lastName;
+
+    await logWorkflow(
+      employee.EmployeeID,
+      'Account Changed',
+      `Employee assigned to account ${account.email}`
+    );
   }
 
-  const allowed = ['position', 'DepartmentID', 'hireDate', 'status', 'headId'];
+  const allowed = [
+    'position',
+    'DepartmentID',
+    'hireDate',
+    'status',
+    'headId',
+    'firstName',
+    'lastName',
+  ];
 
   for (const key of allowed) {
     if (Object.prototype.hasOwnProperty.call(params, key)) {
@@ -1631,14 +1633,18 @@ async function update(id, params) {
 
   await employee.save();
 
-  // If department changed, update counts
   if (oldDept !== employee.DepartmentID) {
     if (oldDept) await updateDepartmentCount(oldDept);
-    if (employee.DepartmentID) await updateDepartmentCount(employee.DepartmentID);
+    if (employee.DepartmentID)
+      await updateDepartmentCount(employee.DepartmentID);
   }
 
   if (oldStatus !== employee.status) {
-    await logWorkflow(employee.EmployeeID, 'Status Changed', `Status changed from ${oldStatus} to ${employee.status}`);
+    await logWorkflow(
+      employee.EmployeeID,
+      'Status Changed',
+      `Status changed from ${oldStatus} to ${employee.status}`
+    );
   }
 
   return await getById(employee.EmployeeID);
@@ -1656,7 +1662,9 @@ async function _delete(id) {
 // ====== Helpers ======
 async function updateDepartmentCount(deptId) {
   const dept = await db.Department.findByPk(deptId, {
-    include: [{ model: db.Employee, as: 'Employees', attributes: ['EmployeeID'] }]
+    include: [
+      { model: db.Employee, as: 'Employees', attributes: ['EmployeeID'] },
+    ],
   });
   if (!dept) return;
   dept.employeeCounts = dept.Employees ? dept.Employees.length : 0;
@@ -1664,10 +1672,9 @@ async function updateDepartmentCount(deptId) {
 }
 
 
-
 ================================================================================
 File: package.json
-Size: 983 B
+Size: 958 B
 ================================================================================
 
 {
@@ -1677,7 +1684,7 @@ Size: 983 B
   "scripts": {
     "start": "node ./server.js",
     "start:dev": "nodemon ./server.js",
-    "export:all": "folder2txt --output Backend2.txt C:/Users/MY PC/JAVA/Jdeployed production/api-backend"
+    "export:all": "folder2txt --output Backend2.txt C:/Users/HF/API/api-backend"
   },
   "keywords": [],
   "author": "",
@@ -3535,17 +3542,23 @@ module.exports = router;
 
 ================================================================================
 File: _helpers\workflow-logger.js
-Size: 504 B
+Size: 618 B
 ================================================================================
 
-// _helpers/workflow-logger.js
 const db = require('./db');
-
 
 async function logWorkflow(employeeId, action, description) {
   if (!employeeId || !action) return;
+
+  // ✅ temporary debug line
+  console.log('🧾 logWorkflow called with:', { employeeId, action, description });
+
   try {
-    await db.EmployeeWorkflow.create({ employeeId: String(employeeId), action, description });
+    await db.EmployeeWorkflow.create({
+      employeeId: String(employeeId),
+      action,
+      description,
+    });
   } catch (err) {
     // Don't crash the main flow if logging fails — log to console for debugging.
     console.error('Failed to log workflow:', err && err.message ? err.message : err);
