@@ -4,6 +4,7 @@ const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 module.exports = {
   getAll,
   getPending,
+  getPendingByManager, // ✅ added
   updateStatus,
   getById,
   create,
@@ -22,11 +23,23 @@ async function getAll() {
   });
 }
 
-async function getPending() {
+async function getPending(currentUserAccountId) {
+  const manager = await resolveEmployeeFromAccount(currentUserAccountId);
+  if (!manager) throw 'Manager record not found for current user';
+
   return await db.Request.findAll({
-    where: { status: 'pending' },
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
-    order: [['created', 'DESC']]
+    where: {
+      status: 'pending',
+      headId: manager.EmployeeID, // ✅ only requests for this manager
+    },
+    include: [
+      {
+        model: db.Account,
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false,
+      },
+    ],
+    order: [['created', 'DESC']],
   });
 }
 
@@ -43,11 +56,48 @@ async function updateStatus(requestId, status) {
   return await getById(requestId);
 }
 
+// ------------------------- Get Pending by Manager -------------------------
+async function getPendingByManager(accountId) {
+  if (!accountId) throw 'Missing accountId of current user';
+
+  // 1️⃣ Find the manager’s Employee record
+  const manager = await db.Employee.findOne({ where: { accountId } });
+  if (!manager) return [];
+
+  // 2️⃣ Find employees whose headId = manager.EmployeeID
+  const subordinates = await db.Employee.findAll({
+    where: { headId: manager.EmployeeID },
+    attributes: ['EmployeeID', 'accountId']
+  });
+
+  if (!subordinates || subordinates.length === 0) return [];
+
+  const subordinateAccountIds = subordinates.map(e => e.accountId);
+
+  // 3️⃣ Get requests belonging to subordinates that are pending
+  const pendingRequests = await db.Request.findAll({
+    where: {
+      status: 'pending',
+      accountId: subordinateAccountIds
+    },
+    include: [
+      {
+        model: db.Account,
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false
+      }
+    ],
+    order: [['created', 'DESC']]
+  });
+
+  return pendingRequests;
+}
+
 // ------------------------- Get by requestId -------------------------
 async function getById(requestId) {
-  if (requestId === undefined || requestId === null) return null;
+  if (!requestId) return null;
   return await db.Request.findByPk(requestId, {
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }]
+    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
   });
 }
 
@@ -64,60 +114,45 @@ async function resolveEmployeeFromAccount(accountId) {
 }
 
 // ------------------------- Create -------------------------
-/**
- * params expected:
- *  { accountId?, employeeEmail?, type, items, quantity, status? }
- */
 async function create(params) {
-  // resolve accountId if not provided
   let accountId = params.accountId ?? null;
   if (!accountId && params.employeeEmail) {
-    accountId = await resolveAccountIdFromEmail(params.employeeEmail);
+    const acc = await db.Account.findOne({ where: { email: params.employeeEmail } });
+    if (acc) accountId = acc.id;
   }
-
   if (!accountId) throw 'accountId is required';
 
-  // validate type
-  if (!ALLOWED_TYPES.includes((params.type || '').toString())) {
-    throw 'Invalid request type';
-  }
-
-  // validate items and quantity
-  if (!params.items || String(params.items).trim() === '') {
-    throw 'items is required';
-  }
-
+  // validate fields
+  if (!ALLOWED_TYPES.includes(params.type)) throw 'Invalid request type';
+  if (!params.items || String(params.items).trim() === '') throw 'items is required';
   const qty = Number(params.quantity);
-  if (!Number.isFinite(qty) || qty < 1) {
-    throw 'quantity must be an integer >= 1';
-  }
+  if (!Number.isFinite(qty) || qty < 1) throw 'quantity must be >= 1';
+  if (params.status && !ALLOWED_STATUS.includes(params.status)) throw 'Invalid status';
 
-  // validate status if present
-  if (params.status && !ALLOWED_STATUS.includes(params.status)) {
-    throw 'Invalid status';
-  }
+  // ✅ find employee submitting this request
+  const employee = await resolveEmployeeFromAccount(accountId);
+  if (!employee) throw 'Employee not found for this account';
+  const headId = employee.headId || null; // direct manager’s EmployeeID
 
+  // ✅ create request with headId
   const r = await db.Request.create({
     accountId,
+    headId,
     type: params.type,
     items: String(params.items).trim(),
     quantity: Math.trunc(qty),
     status: params.status || 'draft',
-    created: new Date()
+    created: new Date(),
   });
 
-  // 🔹 log workflow
-  const employee = await resolveEmployeeFromAccount(accountId);
-  if (employee) {
-    await logWorkflow(
-      employee.EmployeeID,
-      'Request Created',
-      `Request #${r.id || r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
-    );
-  }
+  // log workflow
+  await logWorkflow(
+    employee.EmployeeID,
+    'Request Created',
+    `Request #${r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
+  );
 
-  const pk = r.requestId ?? r.id ?? null;
-  return await getById(pk);
+  return await getById(r.requestId);
 }
 
 // ------------------------- Update -------------------------

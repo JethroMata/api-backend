@@ -1092,7 +1092,7 @@ module.exports = router;
 
 ================================================================================
 File: employees\employee-workflow.model.js
-Size: 1.21 kB
+Size: 1.02 kB
 ================================================================================
 
 // employees/employee-workflow.model.js
@@ -1103,26 +1103,25 @@ module.exports = (sequelize) => {
     'EmployeeWorkflow',
     {
       id: { type: DataTypes.INTEGER, primaryKey: true, autoIncrement: true },
-      // store the employee primary key (EmployeeID) as string to match Employee model
       employeeId: { type: DataTypes.STRING(32), allowNull: false },
-      action: { type: DataTypes.STRING, allowNull: false },   // e.g. 'Employee Created'
+      action: { type: DataTypes.STRING, allowNull: false },
       description: { type: DataTypes.TEXT, allowNull: true },
-      createdAt: { type: DataTypes.DATE, allowNull: false, defaultValue: DataTypes.NOW }
     },
     {
       tableName: 'employee_workflows',
-      timestamps: false
+      timestamps: true, // ✅ match global define: { timestamps: true }
+      createdAt: 'createdAt',
+      updatedAt: false, // ✅ skip updatedAt column if not used
     }
   );
 
-  // optional association (not required but convenient)
   EmployeeWorkflow.associate = (models) => {
     if (models.Employee) {
       EmployeeWorkflow.belongsTo(models.Employee, {
         foreignKey: 'employeeId',
         targetKey: 'EmployeeID',
         as: 'Employee',
-        constraints: false // because targetKey isn't a numeric PK Sequelize expects by default
+        constraints: false,
       });
     }
   };
@@ -1133,7 +1132,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: employees\employee.controller.js
-Size: 4.4 kB
+Size: 4.07 kB
 ================================================================================
 
 // employees/employees.controller.js
@@ -1154,14 +1153,13 @@ router.post('/', authorize(Role.Admin), create);
 router.put('/:id', /* authorize(Role.Admin), */ update);
 router.delete('/:id', /* authorize(Role.Admin), */ _delete);
 
-// 🚀 New: Transfer employee to another department
+// 🚀 Transfer endpoint
 router.post('/:id/transfer', /* authorize(Role.Admin), */ transferDepartment);
 
 module.exports = router;
 
 // ===== Controller Handlers =====
 
-// Get all employees (with Department + Account)
 async function getAll(req, res, next) {
   try {
     const employees = await employeeService.getAll({
@@ -1175,7 +1173,6 @@ async function getAll(req, res, next) {
   }
 }
 
-// Generate next EmployeeID
 async function getNextId(req, res, next) {
   try {
     const nextId = await employeeService.generateNextEmployeeID();
@@ -1205,7 +1202,6 @@ async function getDepartmentHead(req, res, next) {
   .catch(next);
 }
 
-// Get one employee by EmployeeID
 async function getById(req, res, next) {
   try {
     const employee = await employeeService.getById(req.params.id, {
@@ -1220,7 +1216,6 @@ async function getById(req, res, next) {
   }
 }
 
-// Create new employee
 async function create(req, res, next) {
   try {
     const employee = await employeeService.create(req.body);
@@ -1231,7 +1226,6 @@ async function create(req, res, next) {
   }
 }
 
-// Update existing employee
 async function update(req, res, next) {
   try {
     const employee = await employeeService.update(req.params.id, req.body);
@@ -1242,7 +1236,6 @@ async function update(req, res, next) {
   }
 }
 
-// Delete employee
 async function _delete(req, res, next) {
   try {
     await employeeService.delete(req.params.id);
@@ -1253,7 +1246,7 @@ async function _delete(req, res, next) {
   }
 }
 
-// ===== New Transfer Handler =====
+// ✅ FIXED TRANSFER FUNCTION
 async function transferDepartment(req, res, next) {
   try {
     const employeeId = req.params.id;
@@ -1266,31 +1259,22 @@ async function transferDepartment(req, res, next) {
     const employee = await db.Employee.findByPk(employeeId);
     if (!employee) return res.status(404).json({ message: 'Employee not found' });
 
-    const fromDeptId = employee.departmentId;
-    employee.departmentId = toDeptId;
+    const fromDeptId = employee.DepartmentID;
+
+    // Update department
+    employee.DepartmentID = toDeptId;
     await employee.save();
 
-    // 🔹 log workflow for transfer
+    // Log transfer
     const logWorkflow = require('_helpers/workflow-logger');
-    await logWorkflow(
-      employee.EmployeeID,
-      'Transferred',
-      `Moved from department ${fromDeptId || 'None'} to ${toDeptId}`
-    );
+    await logWorkflow(employee.EmployeeID, 'Transferred', null, fromDeptId, toDeptId);
 
-    res.json({
-      message: `Employee ${employeeId} transferred successfully`,
-      fromDeptId,
-      toDeptId,
-      employee
-    });
+    res.json({ message: `Employee ${employee.EmployeeID} transferred successfully` });
   } catch (err) {
     console.error('Error in transferDepartment:', err);
     next(err);
   }
 }
-
-
 
 
 ================================================================================
@@ -3542,26 +3526,62 @@ module.exports = router;
 
 ================================================================================
 File: _helpers\workflow-logger.js
-Size: 618 B
+Size: 1.69 kB
 ================================================================================
 
+// _helpers/workflow-logger.js
 const db = require('./db');
 
-async function logWorkflow(employeeId, action, description) {
-  if (!employeeId || !action) return;
-
-  // ✅ temporary debug line
-  console.log('🧾 logWorkflow called with:', { employeeId, action, description });
-
+/**
+ * Get readable department name by ID
+ */
+async function getDeptNameById(id) {
   try {
-    await db.EmployeeWorkflow.create({
-      employeeId: String(employeeId),
-      action,
-      description,
-    });
+    if (!id || isNaN(id)) return null;
+
+    // Use Department model (confirmed from db.js)
+    const dept = await db.Department.findByPk(id);
+    if (!dept) return null;
+
+    // ✅ Your field is departmentName (lowercase d)
+    return dept.departmentName || null;
   } catch (err) {
-    // Don't crash the main flow if logging fails — log to console for debugging.
-    console.error('Failed to log workflow:', err && err.message ? err.message : err);
+    console.error('Error in getDeptNameById:', err);
+    return null;
+  }
+}
+
+/**
+ * Log workflow entry with proper department names
+ */
+async function logWorkflow(employeeId, action, description = null, fromDeptId = null, toDeptId = null) {
+  try {
+    const fromDeptName = await getDeptNameById(fromDeptId);
+    const toDeptName = await getDeptNameById(toDeptId);
+
+    let finalDescription;
+    if (description) {
+      finalDescription = description;
+    } else if (fromDeptName && toDeptName) {
+      finalDescription = `Moved from department ${fromDeptName} to ${toDeptName}`;
+    } else if (!fromDeptName && toDeptName) {
+      finalDescription = `Moved to department ${toDeptName}`;
+    } else if (fromDeptName && !toDeptName) {
+      finalDescription = `Moved from department ${fromDeptName}`;
+    } else {
+      finalDescription = 'Department updated';
+    }
+
+    await db.EmployeeWorkflow.create({
+      employeeId,
+      action,
+      description: finalDescription,
+      createdAt: new Date(),
+    });
+
+    console.log(`✅ Workflow logged for ${employeeId}: ${finalDescription}`);
+  } catch (err) {
+    console.error('❌ Error logging workflow:', err);
   }
 }
 

@@ -55,7 +55,8 @@ async function getAll(req, res, next) {
 
 async function getPending(req, res, next) {
   try {
-    const list = await requestService.getPending();
+    const accountId = req.user?.id || req.body?.accountId; // who is logged in
+    const list = await requestService.getPendingByManager(accountId);
     res.json(list);
   } catch (err) {
     next(err);

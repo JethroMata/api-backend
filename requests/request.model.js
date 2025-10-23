@@ -1,4 +1,3 @@
-// requests/request.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -6,51 +5,52 @@ module.exports = (sequelize) => {
     requestId: {
       type: DataTypes.INTEGER.UNSIGNED,
       autoIncrement: true,
-      primaryKey: true
+      primaryKey: true,
     },
     accountId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       references: {
         model: 'accounts',
-        key: 'id'
+        key: 'id',
       },
       onUpdate: 'CASCADE',
-      onDelete: 'CASCADE'
+      onDelete: 'CASCADE',
+    },
+    headId: {
+      type: DataTypes.STRING(32), // ✅ employee's manager (head)
+      allowNull: true,
     },
     type: {
       type: DataTypes.ENUM('equipment', 'leave', 'resources'),
-      allowNull: false
+      allowNull: false,
     },
     items: {
-      type: DataTypes.STRING(255), // item name
-      allowNull: false
+      type: DataTypes.STRING(255),
+      allowNull: false,
     },
     quantity: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
-      defaultValue: 1
+      defaultValue: 1,
     },
     status: {
-  type: DataTypes.ENUM('draft', 'pending', 'approved', 'rejected'),
-  allowNull: false,
-  defaultValue: 'draft'
-},
+      type: DataTypes.ENUM('draft', 'pending', 'approved', 'rejected'),
+      allowNull: false,
+      defaultValue: 'draft',
+    },
     created: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW
+      defaultValue: DataTypes.NOW,
     },
     updated: {
       type: DataTypes.DATE,
-      allowNull: true
-    }
+      allowNull: true,
+    },
   };
 
-  const options = {
-    tableName: 'requests',
-    timestamps: false
-  };
+  const options = { tableName: 'requests', timestamps: false };
 
   const Request = sequelize.define('Request', attributes, options);
 
@@ -59,7 +59,7 @@ module.exports = (sequelize) => {
       Request.belongsTo(models.Account, {
         foreignKey: 'accountId',
         targetKey: 'id',
-        as: 'Account'
+        as: 'Account',
       });
     }
   };
