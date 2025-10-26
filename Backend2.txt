@@ -1916,16 +1916,18 @@ Size: 40 B
 
 ================================================================================
 File: requests\index.js
-Size: 679 B
+Size: 747 B
 ================================================================================
 
 // requests/index.js
 const express = require('express');
 const router = express.Router();
 const controller = require('./request.controller');
+const authorize = require('_middleware/authorize');
+
 
 router.get('/', controller.getAll);
-router.get('/pending', controller.getPending);
+router.get('/pending', authorize(), controller.getPending);
 router.get('/:requestId', controller.getById);
 router.post('/', controller.createSchema, controller.create);
 router.put('/:requestId', controller.updateSchema, controller.update);
@@ -1939,7 +1941,7 @@ module.exports = router;
 
 ================================================================================
 File: requests\request.controller.js
-Size: 3.01 kB
+Size: 3.11 kB
 ================================================================================
 
 // requests/request.controller.js
@@ -1999,7 +2001,8 @@ async function getAll(req, res, next) {
 
 async function getPending(req, res, next) {
   try {
-    const list = await requestService.getPending();
+    const accountId = req.user?.id || req.body?.accountId; // who is logged in
+    const list = await requestService.getPendingByManager(accountId);
     res.json(list);
   } catch (err) {
     next(err);
@@ -2064,10 +2067,9 @@ async function _delete(req, res, next) {
 
 ================================================================================
 File: requests\request.model.js
-Size: 1.52 kB
+Size: 1.6 kB
 ================================================================================
 
-// requests/request.model.js
 const { DataTypes } = require('sequelize');
 
 module.exports = (sequelize) => {
@@ -2075,51 +2077,52 @@ module.exports = (sequelize) => {
     requestId: {
       type: DataTypes.INTEGER.UNSIGNED,
       autoIncrement: true,
-      primaryKey: true
+      primaryKey: true,
     },
     accountId: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
       references: {
         model: 'accounts',
-        key: 'id'
+        key: 'id',
       },
       onUpdate: 'CASCADE',
-      onDelete: 'CASCADE'
+      onDelete: 'CASCADE',
+    },
+    headId: {
+      type: DataTypes.STRING(32), // ✅ employee's manager (head)
+      allowNull: true,
     },
     type: {
       type: DataTypes.ENUM('equipment', 'leave', 'resources'),
-      allowNull: false
+      allowNull: false,
     },
     items: {
-      type: DataTypes.STRING(255), // item name
-      allowNull: false
+      type: DataTypes.STRING(255),
+      allowNull: false,
     },
     quantity: {
       type: DataTypes.INTEGER.UNSIGNED,
       allowNull: false,
-      defaultValue: 1
+      defaultValue: 1,
     },
     status: {
-  type: DataTypes.ENUM('draft', 'pending', 'approved', 'rejected'),
-  allowNull: false,
-  defaultValue: 'draft'
-},
+      type: DataTypes.ENUM('draft', 'pending', 'approved', 'rejected'),
+      allowNull: false,
+      defaultValue: 'draft',
+    },
     created: {
       type: DataTypes.DATE,
       allowNull: false,
-      defaultValue: DataTypes.NOW
+      defaultValue: DataTypes.NOW,
     },
     updated: {
       type: DataTypes.DATE,
-      allowNull: true
-    }
+      allowNull: true,
+    },
   };
 
-  const options = {
-    tableName: 'requests',
-    timestamps: false
-  };
+  const options = { tableName: 'requests', timestamps: false };
 
   const Request = sequelize.define('Request', attributes, options);
 
@@ -2128,7 +2131,7 @@ module.exports = (sequelize) => {
       Request.belongsTo(models.Account, {
         foreignKey: 'accountId',
         targetKey: 'id',
-        as: 'Account'
+        as: 'Account',
       });
     }
   };
@@ -2139,7 +2142,7 @@ module.exports = (sequelize) => {
 
 ================================================================================
 File: requests\request.service.js
-Size: 6.86 kB
+Size: 8.22 kB
 ================================================================================
 
 const db = require('_helpers/db');
@@ -2148,6 +2151,7 @@ const logWorkflow = require('_helpers/workflow-logger'); // 🔹 added
 module.exports = {
   getAll,
   getPending,
+  getPendingByManager, // ✅ added
   updateStatus,
   getById,
   create,
@@ -2166,11 +2170,23 @@ async function getAll() {
   });
 }
 
-async function getPending() {
+async function getPending(currentUserAccountId) {
+  const manager = await resolveEmployeeFromAccount(currentUserAccountId);
+  if (!manager) throw 'Manager record not found for current user';
+
   return await db.Request.findAll({
-    where: { status: 'pending' },
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
-    order: [['created', 'DESC']]
+    where: {
+      status: 'pending',
+      headId: manager.EmployeeID, // ✅ only requests for this manager
+    },
+    include: [
+      {
+        model: db.Account,
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false,
+      },
+    ],
+    order: [['created', 'DESC']],
   });
 }
 
@@ -2187,11 +2203,48 @@ async function updateStatus(requestId, status) {
   return await getById(requestId);
 }
 
+// ------------------------- Get Pending by Manager -------------------------
+async function getPendingByManager(accountId) {
+  if (!accountId) throw 'Missing accountId of current user';
+
+  // 1️⃣ Find the manager’s Employee record
+  const manager = await db.Employee.findOne({ where: { accountId } });
+  if (!manager) return [];
+
+  // 2️⃣ Find employees whose headId = manager.EmployeeID
+  const subordinates = await db.Employee.findAll({
+    where: { headId: manager.EmployeeID },
+    attributes: ['EmployeeID', 'accountId']
+  });
+
+  if (!subordinates || subordinates.length === 0) return [];
+
+  const subordinateAccountIds = subordinates.map(e => e.accountId);
+
+  // 3️⃣ Get requests belonging to subordinates that are pending
+  const pendingRequests = await db.Request.findAll({
+    where: {
+      status: 'pending',
+      accountId: subordinateAccountIds
+    },
+    include: [
+      {
+        model: db.Account,
+        attributes: ['id', 'email', 'firstName', 'lastName'],
+        required: false
+      }
+    ],
+    order: [['created', 'DESC']]
+  });
+
+  return pendingRequests;
+}
+
 // ------------------------- Get by requestId -------------------------
 async function getById(requestId) {
-  if (requestId === undefined || requestId === null) return null;
+  if (!requestId) return null;
   return await db.Request.findByPk(requestId, {
-    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }]
+    include: [{ model: db.Account, attributes: ['id', 'email', 'firstName', 'lastName'], required: false }],
   });
 }
 
@@ -2208,60 +2261,45 @@ async function resolveEmployeeFromAccount(accountId) {
 }
 
 // ------------------------- Create -------------------------
-/**
- * params expected:
- *  { accountId?, employeeEmail?, type, items, quantity, status? }
- */
 async function create(params) {
-  // resolve accountId if not provided
   let accountId = params.accountId ?? null;
   if (!accountId && params.employeeEmail) {
-    accountId = await resolveAccountIdFromEmail(params.employeeEmail);
+    const acc = await db.Account.findOne({ where: { email: params.employeeEmail } });
+    if (acc) accountId = acc.id;
   }
-
   if (!accountId) throw 'accountId is required';
 
-  // validate type
-  if (!ALLOWED_TYPES.includes((params.type || '').toString())) {
-    throw 'Invalid request type';
-  }
-
-  // validate items and quantity
-  if (!params.items || String(params.items).trim() === '') {
-    throw 'items is required';
-  }
-
+  // validate fields
+  if (!ALLOWED_TYPES.includes(params.type)) throw 'Invalid request type';
+  if (!params.items || String(params.items).trim() === '') throw 'items is required';
   const qty = Number(params.quantity);
-  if (!Number.isFinite(qty) || qty < 1) {
-    throw 'quantity must be an integer >= 1';
-  }
+  if (!Number.isFinite(qty) || qty < 1) throw 'quantity must be >= 1';
+  if (params.status && !ALLOWED_STATUS.includes(params.status)) throw 'Invalid status';
 
-  // validate status if present
-  if (params.status && !ALLOWED_STATUS.includes(params.status)) {
-    throw 'Invalid status';
-  }
+  // ✅ find employee submitting this request
+  const employee = await resolveEmployeeFromAccount(accountId);
+  if (!employee) throw 'Employee not found for this account';
+  const headId = employee.headId || null; // direct manager’s EmployeeID
 
+  // ✅ create request with headId
   const r = await db.Request.create({
     accountId,
+    headId,
     type: params.type,
     items: String(params.items).trim(),
     quantity: Math.trunc(qty),
     status: params.status || 'draft',
-    created: new Date()
+    created: new Date(),
   });
 
-  // 🔹 log workflow
-  const employee = await resolveEmployeeFromAccount(accountId);
-  if (employee) {
-    await logWorkflow(
-      employee.EmployeeID,
-      'Request Created',
-      `Request #${r.id || r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
-    );
-  }
+  // log workflow
+  await logWorkflow(
+    employee.EmployeeID,
+    'Request Created',
+    `Request #${r.requestId} (${r.type}) created for ${r.items} x${r.quantity}`
+  );
 
-  const pk = r.requestId ?? r.id ?? null;
-  return await getById(pk);
+  return await getById(r.requestId);
 }
 
 // ------------------------- Update -------------------------
@@ -2365,7 +2403,7 @@ async function _delete(requestId) {
 
 ================================================================================
 File: server.js
-Size: 1.52 kB
+Size: 1.48 kB
 ================================================================================
 
 // server.js
@@ -2378,37 +2416,43 @@ const cors = require('cors');
 const errorHandler = require('_middleware/error-handler');
 const positionRoutes = require('./positions');
 
-// middleware
+// Database initialization
+const db = require('_helpers/db');
+
+// Middleware setup
 app.use(bodyParser.urlencoded({ extended: false }));
 app.use(bodyParser.json());
 app.use(cookieParser());
 
-// allow cors requests from any origin and with credentials
-app.use(cors({ origin: (origin, callback) => callback(null, true), credentials: true }));
+// Allow CORS from any origin with credentials
+app.use(
+  cors({
+    origin: (origin, callback) => callback(null, true),
+    credentials: true,
+  })
+);
 
-// api routes
+// Routes
 const accountRoutes = require('./accounts/accounts.controller');
 const employeeRoutes = require('./employees/employee.controller');
 const departmentRoutes = require('./departments');
 const requestRoutes = require('./requests');
 
-// mount routes
 app.use('/accounts', accountRoutes);
 app.use('/employees', employeeRoutes);
 app.use('/departments', departmentRoutes);
 app.use('/requests', requestRoutes);
 app.use('/positions', positionRoutes);
 
-// mount workflow routes (separate to avoid conflict)
+// Employee workflow routes
 app.use('/employee-workflows', require('./employees/employee-workflow.controller'));
-//app.use('/employees', require('./employees/employee.controller'));
 
-// global error handler
+// Global error handler
 app.use(errorHandler);
 
-// start server
-const port = process.env.NODE_ENV === 'production' ? (process.env.PORT || 80) : 4000;
-app.listen(port, () => console.log('Server listening on port ' + port));
+// Start server
+const port = process.env.NODE_ENV === 'production' ? process.env.PORT || 80 : 4000;
+app.listen(port, () => console.log(`Server listening on port ${port}`));
 
 
 ================================================================================

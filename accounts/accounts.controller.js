@@ -18,8 +18,8 @@ router.post('/validate-reset-token', validateResetTokenSchema, validateResetToke
 router.post('/reset-password', resetPasswordSchema, resetPassword);
 
 router.get('/', authorize(Role.Admin), getAll);
-// -------------------- MANAGER ROUTE --------------------
 router.get('/managers', /*authorize(),*/ getManagers);
+router.get('/unassigned', /*authorize(Role.Admin),*/ getUnassignedAccounts);
 router.get('/:id', authorize(), getById);
 router.post('/', authorize(Role.Admin), createSchema, create);
 router.put('/:id', authorize(), updateSchema, update);
@@ -263,6 +263,12 @@ function _delete(req, res, next) {
 function getManagers(req, res, next) {
   accountService.getManagers()
     .then(managers => res.json(managers))
+    .catch(next);
+}
+
+function getUnassignedAccounts(req, res, next) {
+  accountService.getUnassignedAccounts()
+    .then(accounts => res.json(accounts))
     .catch(next);
 }
 

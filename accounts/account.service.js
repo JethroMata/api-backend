@@ -22,7 +22,8 @@ module.exports = {
   create,
   update,
   delete: _delete,
-  getManagers // 👈 ADD THIS
+  getManagers, // 👈 ADD THIS
+  getUnassignedAccounts // 👈 add this
 };
 
 // ------------------------- Authentication -------------------------
@@ -167,6 +168,23 @@ async function getManagers() {
     console.error('❌ Error fetching managers:', err);
     throw err; // ✅ throw error to let controller handle it
   }
+}
+
+// ✅ Get accounts not yet assigned to an employee
+async function getUnassignedAccounts() {
+  const assignedAccounts = await db.Employee.findAll({
+    attributes: ['accountId'],
+    where: { accountId: { [Op.ne]: null } }
+  });
+
+  const assignedIds = assignedAccounts.map(e => e.accountId);
+
+  return await db.Account.findAll({
+    where: {
+      id: { [Op.notIn]: assignedIds }
+    },
+    attributes: ['id', 'firstName', 'lastName', 'email']
+  });
 }
 
 async function create(params) {
